@@ -55,7 +55,9 @@ async fn main() -> Result<()> {
         .route("/endpoints/{id}/select", axum::routing::post(handlers::endpoints::select_endpoint))
         .route("/endpoints/{id}/test", axum::routing::post(handlers::endpoints::test_endpoint))
         .route("/schemas", get(handlers::schemas::list_schemas))
+        .route("/schemas/table", get(handlers::schemas::schemas_table))
         .route("/tables", get(handlers::tables::list_tables))
+        .route("/tables/table", get(handlers::tables::tables_table))
         .route("/tables/indices", get(handlers::indices::list_indices))
         .route(
             "/tables/{schema}/{table}",

@@ -27,7 +27,34 @@ pub struct TablesTemplate {
     pub ctx: AppContext,
     pub title: String,
     pub filter: String,
-    pub table_count: usize,
+    pub display_filter: String,
+    pub selected_schema: String,
+    pub sort_by: String,
+    pub sort_order: String,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_count: usize,
+    pub filtered_count: usize,
+    pub total_pages: usize,
+    pub showing_start: usize,
+    pub showing_end: usize,
+    pub tables: Vec<TableRow>,
+    pub schemas: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "tables_table.html")]
+pub struct TablesTableTemplate {
+    pub filter: String,
+    pub sort_by: String,
+    pub sort_order: String,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_count: usize,
+    pub filtered_count: usize,
+    pub total_pages: usize,
+    pub showing_start: usize,
+    pub showing_end: usize,
     pub tables: Vec<TableRow>,
 }
 
@@ -78,6 +105,32 @@ pub struct ConsoleTemplate {
 pub struct SchemasTemplate {
     pub ctx: AppContext,
     pub title: String,
+    pub filter: String,
+    pub sort_by: String,
+    pub sort_order: String,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_count: usize,
+    pub filtered_count: usize,
+    pub total_pages: usize,
+    pub showing_start: usize,
+    pub showing_end: usize,
+    pub schemas: Vec<SchemaRow>,
+}
+
+#[derive(Template)]
+#[template(path = "schemas_table.html")]
+pub struct SchemasTableTemplate {
+    pub filter: String,
+    pub sort_by: String,
+    pub sort_order: String,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_count: usize,
+    pub filtered_count: usize,
+    pub total_pages: usize,
+    pub showing_start: usize,
+    pub showing_end: usize,
     pub schemas: Vec<SchemaRow>,
 }
 
@@ -98,6 +151,7 @@ pub struct EndpointsListTemplate {
 
 #[derive(Clone)]
 pub struct TableRow {
+    pub num: usize,
     pub schema: String,
     pub name: String,
     pub rows: String,
@@ -116,7 +170,9 @@ pub struct IndexRow {
 
 #[derive(Clone)]
 pub struct SchemaRow {
+    pub num: usize,
     pub name: String,
     pub table_count: String,
     pub index_count: String,
+    pub total_size: String,
 }
