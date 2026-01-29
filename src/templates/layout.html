@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #f7f5f2;
+      --text: #1f1f1f;
+      --muted: #6b6b6b;
+      --card: #fff;
+      --accent: #1a5d57;
+      --accent-2: #d97706;
+      --border: #e5e2dd;
+    }
+    body {
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 700px at 10% 0%, #e8efe9 0%, var(--bg) 55%, #f0ede7 100%);
+      color: var(--text);
+      margin: 0;
+    }
+    header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(6px);
+      position: sticky;
+      top: 0;
+    }
+    nav a {
+      margin-right: 16px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    nav a.active { color: var(--accent); }
+    main { padding: 24px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    }
+    .grid { display: grid; gap: 16px; }
+    .grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .badge {
+      background: #eef3f1;
+      color: var(--accent);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .muted { color: var(--muted); }
+    .toolbar { display: flex; gap: 12px; align-items: center; }
+    input[type="text"] { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+    .pill {
+      background: #fdf6e3;
+      color: #8b5a00;
+      border: 1px dashed #f0c27b;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+    .link { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/" class="{% if nav == "dashboard" %}active{% endif %}">Dashboard</a>
+      <a href="/tables" class="{% if nav == "tables" %}active{% endif %}">Tables</a>
+      <a href="/tables/indices" class="{% if nav == "indices" %}active{% endif %}">Indices</a>
+      <a href="/dev" class="{% if nav == "dev" %}active{% endif %}">Dev Console</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

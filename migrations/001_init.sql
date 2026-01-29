@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS endpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    insecure INTEGER NOT NULL DEFAULT 0,
+    username TEXT,
+    password_encrypted TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

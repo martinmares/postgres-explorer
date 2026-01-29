@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Database">
+  <defs>
+    <linearGradient id="db" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#4f8cff"/>
+      <stop offset="1" stop-color="#2b5ad9"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0b1020"/>
+  <g transform="translate(12 10)" fill="url(#db)">
+    <ellipse cx="20" cy="6" rx="18" ry="6"/>
+    <path d="M2 6v10c0 3.3 8 6 18 6s18-2.7 18-6V6c-4 3.3-12 5-18 5S6 9.3 2 6z"/>
+    <path d="M2 18v10c0 3.3 8 6 18 6s18-2.7 18-6V18c-4 3.3-12 5-18 5s-14-1.7-18-5z"/>
+    <path d="M2 30v10c0 3.3 8 6 18 6s18-2.7 18-6V30c-4 3.3-12 5-18 5s-14-1.7-18-5z"/>
+  </g>
+</svg>

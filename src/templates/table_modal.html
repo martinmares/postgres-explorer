@@ -1,0 +1,31 @@
+<div class="card">
+  <div class="card-body">
+    <h3 class="card-title">{{ schema }}.{{ name }}</h3>
+    <div class="row row-cards">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Row estimate</div>
+            <div class="h4">{{ rows }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Size</div>
+            <div class="h4">{{ size }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mt-3">
+      {% if authorized %}
+        <div class="text-muted">Fragmentation</div>
+        <div class="h4">{{ fragmentation }}</div>
+      {% else %}
+        {% include "partials/no_authorized.html" %}
+      {% endif %}
+    </div>
+  </div>
+</div>

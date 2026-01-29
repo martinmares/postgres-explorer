@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Schemas | Postgres Explorer{% endblock %}
+{% block nav_schemas %}active{% endblock %}
+{% block page_title %}Schemas{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Schemas</h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <thead>
+        <tr>
+          <th>Schema</th>
+          <th>Tables</th>
+          <th>Indexes</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in schemas %}
+        <tr>
+          <td><span class="badge bg-azure-lt">{{ s.name }}</span></td>
+          <td>{{ s.table_count }}</td>
+          <td>{{ s.index_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if schemas.len() == 0 %}
+    <div class="card-body">
+      <div class="alert alert-info">No schemas found.</div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

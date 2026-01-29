@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_tables %}active{% endblock %}
+{% block page_title %}{{ schema }}.{{ name }}{% endblock %}
+{% block content %}
+<div class="row row-deck row-cards">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Rows</div>
+        <div class="h3">{{ rows }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Size</div>
+        <div class="h3">{{ size }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Fragmentation</div>
+        {% if authorized %}
+          <div class="h3">{{ fragmentation }}</div>
+          <div class="text-muted">Vacuum hint: {{ vacuum_hint }}</div>
+        {% else %}
+          {% include "partials/no_authorized.html" %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Indexes</div>
+        <div class="h3">{{ index_count }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

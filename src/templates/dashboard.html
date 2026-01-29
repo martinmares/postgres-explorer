@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+<div class="row row-deck row-cards">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Server</div>
+        <div class="text-muted">{{ server_name }}</div>
+        <div class="text-muted">Version: {{ server_version }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Database size</div>
+        <div class="h3">{{ db_size }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Schemas</div>
+        <div class="h3">{{ schema_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Tables</div>
+        <div class="h3">{{ table_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Indexes</div>
+        <div class="h3">{{ index_count }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

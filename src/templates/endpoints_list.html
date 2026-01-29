@@ -1,0 +1,87 @@
+{% if endpoints.is_empty() %}
+<div class="empty">
+    <div class="empty-icon">
+        <i class="ti ti-server-off"></i>
+    </div>
+    <p class="empty-title">No Connections</p>
+    <p class="empty-subtitle text-muted">
+        Start by adding your first Postgres connection
+    </p>
+    <div class="empty-action">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-endpoint">
+            <i class="ti ti-plus"></i>
+            Add Connection
+        </button>
+    </div>
+</div>
+{% else %}
+<div class="list-group list-group-flush">
+    {% for endpoint in endpoints %}
+    <div class="list-group-item">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <span class="avatar {% if active_id == endpoint.id %}bg-green{% endif %}">
+                    <i class="ti ti-database"></i>
+                </span>
+            </div>
+            <div class="col" style="cursor: pointer;" onclick="document.getElementById('select-form-{{ endpoint.id }}').submit();">
+                <div class="text-truncate">
+                    <strong>{{ endpoint.name }}</strong>
+                    <span class="text-muted small ms-2">(ID {{ endpoint.id }})</span>
+                    {% if active_id == endpoint.id %}
+                    <span class="badge bg-green-lt ms-2">Active</span>
+                    {% endif %}
+                </div>
+                <div class="text-muted">
+                    <code>{{ endpoint.url }}</code>
+                    {% if endpoint.insecure %}
+                    <span class="badge bg-yellow-lt ms-2">
+                        <i class="ti ti-shield-off"></i> Insecure
+                    </span>
+                    {% endif %}
+                    {% if endpoint.username.is_some() %}
+                    <span class="badge bg-blue-lt ms-2">
+                        <i class="ti ti-user"></i> {{ endpoint.username.as_ref().unwrap() }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-auto">
+                <form id="select-form-{{ endpoint.id }}" action="/endpoints/{{ endpoint.id }}/select" method="post" style="display: none;"></form>
+                <div class="btn-list">
+                    <button
+                        class="btn btn-sm btn-icon btn-success"
+                        onclick="event.stopPropagation(); testConnection(event, {{ endpoint.id }}, '{{ endpoint.name }}')"
+                        title="Test connection">
+                        <i class="ti ti-plug-connected"></i>
+                    </button>
+                    <button
+                        class="btn btn-sm btn-icon btn-ghost-primary"
+                        onclick="event.stopPropagation(); openEditEndpoint(this);"
+                        data-endpoint-id="{{ endpoint.id }}"
+                        data-endpoint-name="{{ endpoint.name }}"
+                        data-endpoint-url="{{ endpoint.url }}"
+                        data-endpoint-insecure="{{ endpoint.insecure }}"
+                        data-endpoint-username="{{ endpoint.username.as_deref().unwrap_or("") }}"
+                        title="Edit connection">
+                        <i class="ti ti-pencil"></i>
+                    </button>
+                    <button
+                        class="btn btn-sm btn-icon btn-ghost-secondary"
+                        onclick="event.stopPropagation(); document.getElementById('select-form-{{ endpoint.id }}').submit();"
+                        title="Use this connection">
+                        <i class="ti ti-check"></i>
+                    </button>
+                    <button
+                        class="btn btn-sm btn-icon btn-ghost-danger"
+                        onclick="event.stopPropagation(); confirmDelete({{ endpoint.id }}, '{{ endpoint.name }}');"
+                        title="Delete">
+                        <i class="ti ti-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

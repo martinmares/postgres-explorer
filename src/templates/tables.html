@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_tables %}active{% endblock %}
+{% block page_title %}Tables{% endblock %}
+{% block page_actions %}
+<div class="col-auto ms-auto d-print-none">
+  <div class="btn-list">
+    <form class="d-flex" method="get" action="/tables">
+      <input class="form-control me-2" type="text" name="filter" placeholder="Filter (regex)" value="{{ filter }}" />
+      <button class="btn btn-primary" type="submit">Filter</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">{{ table_count }} tables</h3>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <thead>
+        <tr>
+          <th>Schema</th>
+          <th>Table</th>
+          <th>Rows</th>
+          <th>Size</th>
+          <th>Indexes</th>
+          <th class="w-1"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for t in tables %}
+        <tr>
+          <td><span class="badge bg-azure-lt">{{ t.schema }}</span></td>
+          <td><a href="/tables/{{ t.schema }}/{{ t.name }}">{{ t.name }}</a></td>
+          <td>{{ t.rows }}</td>
+          <td>{{ t.size }}</td>
+          <td>{{ t.index_count }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-secondary" href="/tables/{{ t.schema }}/{{ t.name }}/modal">Quick detail</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if tables.len() == 0 %}
+    <div class="card-body">
+      <div class="alert alert-info">No data yet.</div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

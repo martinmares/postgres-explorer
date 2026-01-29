@@ -1,0 +1,107 @@
+mod config;
+mod db;
+mod handlers;
+mod templates;
+mod utils;
+
+use anyhow::Result;
+use axum::routing::get;
+use axum::Router;
+use clap::Parser;
+use std::sync::Arc;
+use tower_http::services::ServeDir;
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser, Debug)]
+#[command(name = "postgres-explorer")]
+#[command(about = "Postgres cluster explorer", long_about = None)]
+struct Args {
+    /// Host for HTTP server
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+
+    /// Port for HTTP server
+    #[arg(short, long, default_value = "8080")]
+    port: u16,
+
+    /// Do not open browser automatically
+    #[arg(long = "no-open")]
+    no_open: bool,
+
+    /// Base path when running behind reverse proxy (e.g. /postgres-explorer)
+    #[arg(long, default_value = "/")]
+    base_path: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .init();
+
+    let args = Args::parse();
+
+    config::init_directories()?;
+    let db = db::Database::new().await?;
+    let base_path = normalize_base_path(&args.base_path);
+    let state = Arc::new(handlers::AppState { db, base_path: base_path.clone() });
+
+    let router = Router::new()
+        .route("/", get(handlers::dashboard::dashboard))
+        .route("/endpoints", get(handlers::endpoints::list_endpoints))
+        .route("/endpoints", axum::routing::post(handlers::endpoints::create_endpoint))
+        .route("/endpoints/{id}", axum::routing::put(handlers::endpoints::update_endpoint))
+        .route("/endpoints/{id}", axum::routing::delete(handlers::endpoints::delete_endpoint))
+        .route("/endpoints/{id}/select", axum::routing::post(handlers::endpoints::select_endpoint))
+        .route("/endpoints/{id}/test", axum::routing::post(handlers::endpoints::test_endpoint))
+        .route("/schemas", get(handlers::schemas::list_schemas))
+        .route("/tables", get(handlers::tables::list_tables))
+        .route("/tables/indices", get(handlers::indices::list_indices))
+        .route(
+            "/tables/{schema}/{table}",
+            get(handlers::table_detail::table_detail),
+        )
+        .route(
+            "/tables/{schema}/{table}/modal",
+            get(handlers::tables::table_modal),
+        )
+        .route("/dev", get(handlers::console::console))
+        .nest_service("/static", axum::routing::get_service(ServeDir::new("static")))
+        .with_state(state.clone());
+    let app = if base_path == "/" {
+        router
+    } else {
+        Router::new().nest(&base_path, router)
+    };
+
+    let addr = format!("{}:{}", args.host, args.port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Listening on http://{}{}", addr, base_path);
+
+    if !args.no_open {
+        let url = format!("http://{}{}", addr, base_path);
+        if let Err(e) = utils::browser::open_browser(&url) {
+            tracing::warn!("Failed to open browser: {}", e);
+            tracing::info!("Please open {} manually", url);
+        }
+    }
+
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+fn normalize_base_path(input: &str) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || trimmed == "/" {
+        return "/".to_string();
+    }
+    let mut path = trimmed.to_string();
+    if !path.starts_with('/') {
+        path.insert(0, '/');
+    }
+    while path.ends_with('/') {
+        path.pop();
+    }
+    path
+}
