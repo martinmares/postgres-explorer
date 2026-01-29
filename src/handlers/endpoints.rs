@@ -2,7 +2,7 @@ use axum::{
     extract::State,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
 };
 use axum_extra::extract::CookieJar;
 use askama::Template;
@@ -20,6 +20,8 @@ pub struct CreateEndpointForm {
     insecure: Option<String>,
     username: Option<String>,
     password: Option<String>,
+    ssl_mode: Option<String>,
+    search_path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -29,6 +31,8 @@ pub struct UpdateEndpointForm {
     insecure: Option<String>,
     username: Option<String>,
     password: Option<String>,
+    ssl_mode: Option<String>,
+    search_path: Option<String>,
 }
 
 fn render_list(endpoints: Vec<crate::db::models::Endpoint>, active_id: i64) -> Result<Response, (StatusCode, String)> {
@@ -82,6 +86,16 @@ pub async fn create_endpoint(
             None
         } else {
             form.password
+        },
+        ssl_mode: if form.ssl_mode.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+            None
+        } else {
+            form.ssl_mode
+        },
+        search_path: if form.search_path.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+            None
+        } else {
+            form.search_path
         },
     };
 
@@ -140,6 +154,16 @@ pub async fn update_endpoint(
         } else {
             form.password
         },
+        ssl_mode: if form.ssl_mode.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+            None
+        } else {
+            form.ssl_mode
+        },
+        search_path: if form.search_path.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+            None
+        } else {
+            form.search_path
+        },
     };
 
     state
@@ -148,14 +172,10 @@ pub async fn update_endpoint(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let endpoints = state
-        .db
-        .get_endpoints()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let active = get_active_endpoint(&state, &jar).await;
-
-    render_list(endpoints, active.as_ref().map(|e| e.id).unwrap_or(-1))
+    // Vrátíme HTMX redirect na /endpoints
+    let mut headers = HeaderMap::new();
+    headers.insert("HX-Redirect", base_path_url(&state, "/endpoints").parse().unwrap());
+    Ok((StatusCode::OK, headers).into_response())
 }
 
 pub async fn delete_endpoint(
@@ -169,14 +189,10 @@ pub async fn delete_endpoint(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let endpoints = state
-        .db
-        .get_endpoints()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let active = get_active_endpoint(&state, &jar).await;
-
-    render_list(endpoints, active.as_ref().map(|e| e.id).unwrap_or(-1))
+    // Vrátíme HTMX redirect na /endpoints
+    let mut headers = HeaderMap::new();
+    headers.insert("HX-Redirect", base_path_url(&state, "/endpoints").parse().unwrap());
+    Ok((StatusCode::OK, headers).into_response())
 }
 
 pub async fn test_endpoint(

@@ -61,11 +61,21 @@ pub async fn connect_pg(
     endpoint: &crate::db::models::Endpoint,
 ) -> anyhow::Result<PgPool> {
     let password = state.db.get_endpoint_password(endpoint).await;
-    let url = build_pg_url(&endpoint.url, endpoint.username.as_deref(), password.as_deref());
+    let mut url = build_pg_url(&endpoint.url, endpoint.username.as_deref(), password.as_deref());
+
+    // Aplikuj SSL mode a další parametry
+    url = apply_connection_params(
+        url,
+        endpoint.ssl_mode.as_deref(),
+        endpoint.search_path.as_deref(),
+        endpoint.insecure,
+    );
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&url)
         .await?;
+
     Ok(pool)
 }
 
@@ -89,4 +99,41 @@ fn build_pg_url(base: &str, username: Option<&str>, password: Option<&str>) -> S
     } else {
         url
     }
+}
+
+fn apply_connection_params(
+    mut url: String,
+    ssl_mode: Option<&str>,
+    search_path: Option<&str>,
+    insecure: bool,
+) -> String {
+    let separator = if url.contains('?') { '&' } else { '?' };
+    let mut params = Vec::new();
+
+    // Aplikuj SSL mode
+    if let Some(mode) = ssl_mode {
+        if !mode.is_empty() {
+            params.push(format!("sslmode={}", mode));
+        }
+    }
+
+    // Pokud je insecure=true a není explicitní ssl mode, nastav require (bez verifikace)
+    // Pokud je insecure=true a je verify-ca/verify-full, ponech (user ví co dělá)
+    if insecure && ssl_mode.is_none() {
+        params.push("sslmode=require".to_string());
+    }
+
+    // Aplikuj search_path
+    if let Some(path) = search_path {
+        if !path.is_empty() {
+            params.push(format!("search_path={}", path));
+        }
+    }
+
+    if !params.is_empty() {
+        url.push(separator);
+        url.push_str(&params.join("&"));
+    }
+
+    url
 }

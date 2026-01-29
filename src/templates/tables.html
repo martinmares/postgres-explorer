@@ -294,27 +294,46 @@ function applySchemaFilter() {
     });
 }
 
-// Sortable headers
-document.querySelectorAll('.sortable').forEach(th => {
-    th.style.cursor = 'pointer';
-    th.addEventListener('click', function() {
-        const sortBy = this.dataset.sort;
-        const currentSortBy = '{{ sort_by }}';
-        const currentSortOrder = '{{ sort_order }}';
+// Sortable headers - funkce pro bindování
+function bindSortableHeaders() {
+    document.querySelectorAll('.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        // Odstraň starý listener, pokud existuje
+        th.replaceWith(th.cloneNode(true));
+    });
 
-        let newSortOrder = 'asc';
-        if (sortBy === currentSortBy && currentSortOrder === 'asc') {
-            newSortOrder = 'desc';
-        }
+    document.querySelectorAll('.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', function() {
+            const sortBy = this.dataset.sort;
+            const tablesTable = document.getElementById('tables-table');
+            const currentSortBy = tablesTable ? tablesTable.dataset.sortBy : '';
+            const currentSortOrder = tablesTable ? tablesTable.dataset.sortOrder : 'desc';
 
-        const filter = document.getElementById('filter-input').value;
-        const perPage = document.querySelector('[name="per_page"]').value;
+            let newSortOrder = 'asc';
+            if (sortBy === currentSortBy && currentSortOrder === 'asc') {
+                newSortOrder = 'desc';
+            }
 
-        htmx.ajax('GET', `/tables/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`, {
-            target: '#tables-table',
-            swap: 'outerHTML'
+            const filter = document.getElementById('filter-input').value;
+            const perPage = document.querySelector('[name="per_page"]').value;
+
+            htmx.ajax('GET', `/tables/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`, {
+                target: '#tables-table',
+                swap: 'outerHTML'
+            });
         });
     });
+}
+
+// Binduj při načtení stránky
+bindSortableHeaders();
+
+// Znovu binduj po každém HTMX swapu
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'tables-table') {
+        bindSortableHeaders();
+    }
 });
 </script>
 

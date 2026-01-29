@@ -13,12 +13,17 @@ pub struct DashboardTemplate {
     pub title: String,
     pub server_name: String,
     pub server_version: String,
-    pub connections: String,
-    pub cache_hit_ratio: String,
     pub schema_count: String,
     pub table_count: String,
     pub index_count: String,
     pub db_size: String,
+    pub cache_hit_ratio: f64,
+    pub cache_hit_ratio_text: String,
+    pub active_connections: i32,
+    pub max_connections: i32,
+    pub connections_text: String,
+    pub connections_percent: f64,
+    pub top_tables: Vec<TopTable>,
 }
 
 #[derive(Template)]
@@ -175,4 +180,15 @@ pub struct SchemaRow {
     pub table_count: String,
     pub index_count: String,
     pub total_size: String,
+}
+
+#[derive(Clone)]
+pub struct TopTable {
+    pub schema: String,
+    pub name: String,
+    pub size: String,
+    pub size_bytes: i64,
+    pub rows: String,
+    pub relative_percent: f64,
+    pub partitions: Vec<String>,
 }

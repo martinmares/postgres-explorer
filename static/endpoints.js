@@ -11,6 +11,9 @@
     if (window.htmx) {
       window.htmx.process(form);
     }
+    // Explicitně nastav výchozí hodnoty pro nové formuláře
+    form.querySelector('[name="ssl_mode"]').value = '';
+    form.querySelector('[name="search_path"]').value = '';
     title.textContent = 'Add Postgres Connection';
     submitBtn.innerHTML = '<i class="ti ti-check"></i> Save Connection';
   }
@@ -32,6 +35,8 @@
     form.querySelector('[name="insecure"]').checked = button.dataset.endpointInsecure === 'true';
     form.querySelector('[name="username"]').value = button.dataset.endpointUsername || '';
     form.querySelector('[name="password"]').value = '';
+    form.querySelector('[name="ssl_mode"]').value = button.dataset.endpointSslMode || '';
+    form.querySelector('[name="search_path"]').value = button.dataset.endpointSearchPath || '';
     title.textContent = 'Edit Postgres Connection';
     submitBtn.innerHTML = '<i class="ti ti-check"></i> Update Connection';
 
@@ -129,53 +134,62 @@
       endpointModal.addEventListener('hidden.bs.modal', resetEndpointForm);
     }
 
-    document.body.addEventListener('htmx:afterSwap', function (evt) {
-      if (evt.detail.target && evt.detail.target.id === 'endpoints-list') {
-        const modalElement = document.getElementById('modal-endpoint');
-        const modal = bootstrap.Modal.getInstance(modalElement);
-        if (modal) {
-          modal.hide();
+    if (!document.body.dataset.endpointsAfterSwapBound) {
+      document.body.dataset.endpointsAfterSwapBound = 'true';
+      document.body.addEventListener('htmx:afterSwap', function (evt) {
+        if (evt.detail.target && evt.detail.target.id === 'endpoints-list') {
+          const modalElement = document.getElementById('modal-endpoint');
+          const modal = bootstrap.Modal.getInstance(modalElement);
+          if (modal) {
+            modal.hide();
+          }
+
+          resetEndpointForm();
+
+          const errorBox = document.getElementById('endpoint-form-error');
+          if (errorBox) {
+            errorBox.textContent = '';
+            errorBox.classList.add('d-none');
+          }
+
+          setTimeout(() => {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            backdrops.forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+          }, 100);
         }
+      });
+    }
 
-        resetEndpointForm();
-
-        const errorBox = document.getElementById('endpoint-form-error');
-        if (errorBox) {
-          errorBox.textContent = '';
-          errorBox.classList.add('d-none');
+    if (!document.body.dataset.endpointsBeforeRequestBound) {
+      document.body.dataset.endpointsBeforeRequestBound = 'true';
+      document.body.addEventListener('htmx:beforeRequest', function (evt) {
+        const form = document.querySelector('#modal-endpoint form');
+        if (form && evt.detail.requestConfig.elt === form) {
+          const errorBox = document.getElementById('endpoint-form-error');
+          if (errorBox) {
+            errorBox.textContent = '';
+            errorBox.classList.add('d-none');
+          }
         }
+      });
+    }
 
-        setTimeout(() => {
-          const backdrops = document.querySelectorAll('.modal-backdrop');
-          backdrops.forEach(backdrop => backdrop.remove());
-          document.body.classList.remove('modal-open');
-          document.body.style.overflow = '';
-          document.body.style.paddingRight = '';
-        }, 100);
-      }
-    }, { once: true });
-
-    document.body.addEventListener('htmx:beforeRequest', function (evt) {
-      const form = document.querySelector('#modal-endpoint form');
-      if (form && evt.detail.requestConfig.elt === form) {
-        const errorBox = document.getElementById('endpoint-form-error');
-        if (errorBox) {
-          errorBox.textContent = '';
-          errorBox.classList.add('d-none');
+    if (!document.body.dataset.endpointsResponseErrorBound) {
+      document.body.dataset.endpointsResponseErrorBound = 'true';
+      document.body.addEventListener('htmx:responseError', function (evt) {
+        const form = document.querySelector('#modal-endpoint form');
+        if (form && evt.detail.requestConfig.elt === form) {
+          const errorBox = document.getElementById('endpoint-form-error');
+          if (errorBox) {
+            errorBox.textContent = evt.detail.xhr.responseText || 'Failed to save connection.';
+            errorBox.classList.remove('d-none');
+          }
         }
-      }
-    });
-
-    document.body.addEventListener('htmx:responseError', function (evt) {
-      const form = document.querySelector('#modal-endpoint form');
-      if (form && evt.detail.requestConfig.elt === form) {
-        const errorBox = document.getElementById('endpoint-form-error');
-        if (errorBox) {
-          errorBox.textContent = evt.detail.xhr.responseText || 'Failed to save connection.';
-          errorBox.classList.remove('d-none');
-        }
-      }
-    });
+      });
+    }
   }
 
   window.openEditEndpoint = openEditEndpoint;

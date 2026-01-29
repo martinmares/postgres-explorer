@@ -63,6 +63,8 @@
                         data-endpoint-url="{{ endpoint.url }}"
                         data-endpoint-insecure="{{ endpoint.insecure }}"
                         data-endpoint-username="{{ endpoint.username.as_deref().unwrap_or("") }}"
+                        data-endpoint-ssl-mode="{{ endpoint.ssl_mode.as_deref().unwrap_or("") }}"
+                        data-endpoint-search-path="{{ endpoint.search_path.as_deref().unwrap_or("") }}"
                         title="Edit connection">
                         <i class="ti ti-pencil"></i>
                     </button>

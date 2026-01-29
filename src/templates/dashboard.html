@@ -3,47 +3,186 @@
 {% block nav_dashboard %}active{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 {% block content %}
-<div class="row row-deck row-cards">
-  <div class="col-md-6">
+
+<!-- První řada - základní info -->
+<div class="row row-deck row-cards mb-3">
+  <div class="col-md-3">
     <div class="card">
       <div class="card-body">
-        <div class="card-title">Server</div>
-        <div class="text-muted">{{ server_name }}</div>
-        <div class="text-muted">Version: {{ server_version }}</div>
+        <div class="d-flex align-items-center">
+          <div class="subheader">Server</div>
+        </div>
+        <div class="h3 mb-0">{{ server_name }}</div>
+        <div class="text-muted small">{{ server_version }}</div>
       </div>
     </div>
   </div>
-  <div class="col-md-6">
+  <div class="col-md-3">
     <div class="card">
       <div class="card-body">
-        <div class="card-title">Database size</div>
-        <div class="h3">{{ db_size }}</div>
+        <div class="d-flex align-items-center">
+          <div class="subheader">Database size</div>
+        </div>
+        <div class="h2 mb-0">{{ db_size }}</div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-2">
     <div class="card">
       <div class="card-body">
-        <div class="card-title">Schemas</div>
-        <div class="h3">{{ schema_count }}</div>
+        <div class="d-flex align-items-center">
+          <div class="subheader">Schemas</div>
+        </div>
+        <div class="h2 mb-0">{{ schema_count }}</div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-2">
     <div class="card">
       <div class="card-body">
-        <div class="card-title">Tables</div>
-        <div class="h3">{{ table_count }}</div>
+        <div class="d-flex align-items-center">
+          <div class="subheader">Tables</div>
+        </div>
+        <div class="h2 mb-0">{{ table_count }}</div>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-md-2">
     <div class="card">
       <div class="card-body">
-        <div class="card-title">Indexes</div>
-        <div class="h3">{{ index_count }}</div>
+        <div class="d-flex align-items-center">
+          <div class="subheader">Indexes</div>
+        </div>
+        <div class="h2 mb-0">{{ index_count }}</div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Druhá řada - metriky s progress bary -->
+<div class="row row-deck row-cards mb-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div class="subheader">Cache Hit Ratio</div>
+          <div class="ms-auto">
+            <span class="text-muted">{{ cache_hit_ratio_text }}</span>
+          </div>
+        </div>
+        <div class="progress progress-sm">
+          {% if cache_hit_ratio >= 95.0 %}
+          <div class="progress-bar bg-success" style="width: {{ cache_hit_ratio }}%" role="progressbar" aria-valuenow="{{ cache_hit_ratio }}" aria-valuemin="0" aria-valuemax="100"></div>
+          {% else if cache_hit_ratio >= 90.0 %}
+          <div class="progress-bar bg-warning" style="width: {{ cache_hit_ratio }}%" role="progressbar" aria-valuenow="{{ cache_hit_ratio }}" aria-valuemin="0" aria-valuemax="100"></div>
+          {% else %}
+          <div class="progress-bar bg-danger" style="width: {{ cache_hit_ratio }}%" role="progressbar" aria-valuenow="{{ cache_hit_ratio }}" aria-valuemin="0" aria-valuemax="100"></div>
+          {% endif %}
+        </div>
+        <div class="text-muted small mt-1">
+          {% if cache_hit_ratio >= 95.0 %}
+          <i class="ti ti-circle-check text-success"></i> Excellent - most data served from cache
+          {% else if cache_hit_ratio >= 90.0 %}
+          <i class="ti ti-alert-triangle text-warning"></i> Good - consider tuning shared_buffers
+          {% else %}
+          <i class="ti ti-alert-circle text-danger"></i> Low - increase shared_buffers or investigate queries
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-3">
+          <div class="subheader">Active Connections</div>
+          <div class="ms-auto">
+            <span class="text-muted">{{ connections_text }}</span>
+          </div>
+        </div>
+        <div class="progress progress-sm">
+          {% if connections_percent < 50.0 %}
+          <div class="progress-bar bg-success" style="width: {{ connections_percent }}%" role="progressbar" aria-valuenow="{{ connections_percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+          {% else if connections_percent < 80.0 %}
+          <div class="progress-bar bg-warning" style="width: {{ connections_percent }}%" role="progressbar" aria-valuenow="{{ connections_percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+          {% else %}
+          <div class="progress-bar bg-danger" style="width: {{ connections_percent }}%" role="progressbar" aria-valuenow="{{ connections_percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+          {% endif %}
+        </div>
+        <div class="text-muted small mt-1">
+          {% if connections_percent < 50.0 %}
+          <i class="ti ti-circle-check text-success"></i> Healthy - plenty of capacity available
+          {% else if connections_percent < 80.0 %}
+          <i class="ti ti-alert-triangle text-warning"></i> Monitor - approaching connection limit
+          {% else %}
+          <i class="ti ti-alert-circle text-danger"></i> Critical - near max_connections limit
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Třetí řada - Top 10 tables -->
+<div class="row row-cards">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Top 10 Tables by Size</h3>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover">
+          <thead>
+            <tr>
+              <th style="width: 50px;">#</th>
+              <th>Schema</th>
+              <th>Table</th>
+              <th>Rows</th>
+              <th>Size</th>
+              <th style="width: 200px;">Relative Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if top_tables.len() == 0 %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">
+                No tables found
+              </td>
+            </tr>
+            {% else %}
+              {% for t in top_tables %}
+              <tr style="cursor: pointer;" onclick="window.location='/tables/{{ t.schema }}/{{ t.name }}'">
+                <td class="text-muted">{{ loop.index }}</td>
+                <td><span class="badge bg-azure-lt">{{ t.schema }}</span></td>
+                <td>
+                  <div>{{ t.name }}</div>
+                  {% if t.partitions.len() > 0 %}
+                  <div class="text-muted small mt-1">
+                    <i class="ti ti-layout-distribute-vertical"></i>
+                    {{ t.partitions.len() }} partitions: {{ t.partitions|join(", ") }}
+                  </div>
+                  {% endif %}
+                </td>
+                <td>{{ t.rows }}</td>
+                <td>{{ t.size }}</td>
+                <td>
+                  <div class="progress progress-sm">
+                    {% if loop.index == 1 %}
+                    <div class="progress-bar bg-primary" style="width: 100%" role="progressbar"></div>
+                    {% else %}
+                    <div class="progress-bar bg-blue-lt" style="width: {{ t.relative_percent }}%" role="progressbar"></div>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}

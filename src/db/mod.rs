@@ -72,6 +72,31 @@ impl Database {
                 .context("Failed to run migration 002")?;
         }
 
+        // Check if ssl_mode and search_path columns exist
+        let columns = sqlx::query("PRAGMA table_info(endpoints)")
+            .fetch_all(pool)
+            .await
+            .context("Failed to inspect endpoints schema")?;
+        let mut has_ssl_mode = false;
+        let mut has_search_path = false;
+        for row in &columns {
+            let name: String = row.get("name");
+            if name == "ssl_mode" {
+                has_ssl_mode = true;
+            }
+            if name == "search_path" {
+                has_search_path = true;
+            }
+        }
+
+        if !has_ssl_mode || !has_search_path {
+            let migration_003 = include_str!("../../migrations/003_add_ssl_and_search_path.sql");
+            sqlx::raw_sql(migration_003)
+                .execute(pool)
+                .await
+                .context("Failed to run migration 003")?;
+        }
+
         tracing::info!("Migrations completed successfully");
         Ok(())
     }
@@ -103,14 +128,16 @@ impl Database {
         let mut tx = self.pool.begin().await?;
 
         let result = sqlx::query(
-            "INSERT INTO endpoints (name, url, insecure, username, password_encrypted)
-             VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO endpoints (name, url, insecure, username, password_encrypted, ssl_mode, search_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&endpoint.name)
         .bind(&endpoint.url)
         .bind(endpoint.insecure)
         .bind(&endpoint.username)
         .bind::<Option<String>>(None)
+        .bind(&endpoint.ssl_mode)
+        .bind(&endpoint.search_path)
         .execute(&mut *tx)
         .await
         .context("Failed to insert endpoint")?;
@@ -151,13 +178,15 @@ impl Database {
 
         sqlx::query(
             "UPDATE endpoints
-             SET name = ?, url = ?, insecure = ?, username = ?, updated_at = CURRENT_TIMESTAMP
+             SET name = ?, url = ?, insecure = ?, username = ?, ssl_mode = ?, search_path = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?"
         )
         .bind(name)
         .bind(url)
         .bind(insecure)
         .bind(endpoint.username)
+        .bind(endpoint.ssl_mode)
+        .bind(endpoint.search_path)
         .bind(id)
         .execute(&mut *tx)
         .await

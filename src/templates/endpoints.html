@@ -42,7 +42,7 @@
                 <h5 class="modal-title" id="endpoint-modal-title">Add Postgres Connection</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="endpoint-form" hx-post="/endpoints" hx-target="#endpoints-list" hx-swap="innerHTML">
+            <form id="endpoint-form" hx-post="/endpoints" hx-target="#endpoints-list" hx-swap="innerHTML" hx-push-url="false">
                 <div class="modal-body">
                     <div id="endpoint-form-error" class="alert alert-danger d-none"></div>
                     <div class="mb-3">
@@ -56,10 +56,27 @@
                         <small class="form-hint">Complete URL including host, port and database</small>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">SSL/TLS Mode</label>
+                        <select class="form-select" name="ssl_mode">
+                            <option value="">Auto (prefer TLS, fallback to plaintext)</option>
+                            <option value="disable">Disable - No TLS (plaintext only)</option>
+                            <option value="prefer">Prefer - Try TLS first, fallback allowed</option>
+                            <option value="require">Require - TLS required (no cert verification)</option>
+                            <option value="verify-ca">Verify CA - TLS with CA verification</option>
+                            <option value="verify-full">Verify Full - TLS with full cert verification</option>
+                        </select>
+                        <small class="form-hint">Controls SSL/TLS connection behavior</small>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" name="insecure">
-                            <span class="form-check-label">Allow insecure TLS (self-signed)</span>
+                            <span class="form-check-label">Allow insecure TLS (self-signed certs)</span>
                         </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Default Schema (search_path)</label>
+                        <input type="text" class="form-control" name="search_path" placeholder="public">
+                        <small class="form-hint">Comma-separated list of schemas (e.g., myapp,public)</small>
                     </div>
                     <hr>
                     <h3 class="card-title">Basic Authentication</h3>

@@ -5,7 +5,7 @@ mod templates;
 mod utils;
 
 use anyhow::Result;
-use axum::routing::get;
+use axum::routing::{get, put};
 use axum::Router;
 use clap::Parser;
 use std::sync::Arc;
@@ -48,10 +48,8 @@ async fn main() -> Result<()> {
 
     let router = Router::new()
         .route("/", get(handlers::dashboard::dashboard))
-        .route("/endpoints", get(handlers::endpoints::list_endpoints))
-        .route("/endpoints", axum::routing::post(handlers::endpoints::create_endpoint))
-        .route("/endpoints/{id}", axum::routing::put(handlers::endpoints::update_endpoint))
-        .route("/endpoints/{id}", axum::routing::delete(handlers::endpoints::delete_endpoint))
+        .route("/endpoints", get(handlers::endpoints::list_endpoints).post(handlers::endpoints::create_endpoint))
+        .route("/endpoints/{id}", put(handlers::endpoints::update_endpoint).delete(handlers::endpoints::delete_endpoint))
         .route("/endpoints/{id}/select", axum::routing::post(handlers::endpoints::select_endpoint))
         .route("/endpoints/{id}/test", axum::routing::post(handlers::endpoints::test_endpoint))
         .route("/schemas", get(handlers::schemas::list_schemas))

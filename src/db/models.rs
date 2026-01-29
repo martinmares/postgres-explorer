@@ -9,6 +9,8 @@ pub struct Endpoint {
     pub insecure: bool,
     pub username: Option<String>,
     pub password_encrypted: Option<String>,
+    pub ssl_mode: Option<String>,
+    pub search_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -20,6 +22,8 @@ pub struct CreateEndpoint {
     pub insecure: bool,
     pub username: Option<String>,
     pub password: Option<String>,
+    pub ssl_mode: Option<String>,
+    pub search_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,4 +33,6 @@ pub struct UpdateEndpoint {
     pub insecure: Option<bool>,
     pub username: Option<String>,
     pub password: Option<String>,
+    pub ssl_mode: Option<String>,
+    pub search_path: Option<String>,
 }
