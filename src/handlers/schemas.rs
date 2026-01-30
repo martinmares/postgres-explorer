@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 
-use crate::handlers::{base_path_url, build_ctx, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
 use crate::templates::{SchemaRow, SchemasTemplate, SchemasTableTemplate};
 use crate::utils::filter::parse_pattern_expression;
 
@@ -170,7 +170,7 @@ pub async fn list_schemas(
         .collect();
 
     let tpl = SchemasTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         title: "Schemas | Postgres Explorer".to_string(),
         filter: query.filter.clone(),
         sort_by: query.sort_by.clone(),
@@ -307,7 +307,7 @@ pub async fn schemas_table(
         .collect();
 
     let tpl = SchemasTableTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         filter: query.filter.clone(),
         sort_by: query.sort_by.clone(),
         sort_order: query.sort_order.clone(),

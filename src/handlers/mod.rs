@@ -23,6 +23,15 @@ pub fn build_ctx(state: &Arc<AppState>) -> AppContext {
     AppContext {
         base_path: state.base_path.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        active_endpoint_name: "No connection".to_string(),
+    }
+}
+
+pub fn build_ctx_with_endpoint(state: &Arc<AppState>, endpoint: Option<&crate::db::models::Endpoint>) -> AppContext {
+    AppContext {
+        base_path: state.base_path.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        active_endpoint_name: endpoint.map(|e| e.name.clone()).unwrap_or_else(|| "No connection".to_string()),
     }
 }
 
@@ -72,9 +81,16 @@ pub async fn connect_pg(
     );
 
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(10)
+        .acquire_timeout(std::time::Duration::from_secs(10))
         .connect(&url)
         .await?;
+
+    // Nastav statement_timeout na 30 sekund
+    sqlx::query("SET statement_timeout = '30s'")
+        .execute(&pool)
+        .await
+        .ok();
 
     Ok(pool)
 }

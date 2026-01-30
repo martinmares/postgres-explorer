@@ -4,6 +4,7 @@ use askama::Template;
 pub struct AppContext {
     pub base_path: String,
     pub version: String,
+    pub active_endpoint_name: String,
 }
 
 #[derive(Template)]

@@ -4,7 +4,7 @@ use askama::Template;
 use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 
-use crate::handlers::{base_path_url, build_ctx, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
 use crate::templates::{IndexRow, IndicesTemplate};
 use crate::utils::format::bytes_to_human;
 
@@ -70,7 +70,7 @@ pub async fn list_indices(
     };
 
     let tpl = IndicesTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         title: "Indexes | Postgres Explorer".to_string(),
         indices,
     };

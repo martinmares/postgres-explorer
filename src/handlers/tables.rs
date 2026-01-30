@@ -4,7 +4,7 @@ use askama::Template;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::handlers::{base_path_url, build_ctx, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
 use crate::templates::{TableModalTemplate, TableRow, TablesTemplate, TablesTableTemplate};
 use crate::utils::filter::parse_pattern_expression;
 use crate::utils::format::bytes_to_human;
@@ -262,7 +262,7 @@ pub async fn list_tables(
 
     // Vyrenderuj initial table HTML
     let table_tpl = TablesTableTemplate {
-        base_path: build_ctx(&state).base_path.clone(),
+        base_path: state.base_path.clone(),
         schema: query.schema.clone(),
         filter: query.filter.clone(),
         sort_by: query.sort_by.clone(),
@@ -279,7 +279,7 @@ pub async fn list_tables(
     let initial_table_html = table_tpl.render().unwrap_or_else(|_| String::from("<div>Error rendering table</div>"));
 
     let tpl = TablesTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         title: "Tables | Postgres Explorer".to_string(),
         filter: query.filter.clone(),
         display_filter,
@@ -496,7 +496,7 @@ pub async fn tables_table(
         .collect();
 
     let tpl = TablesTableTemplate {
-        base_path: build_ctx(&state).base_path,
+        base_path: state.base_path.clone(),
         schema: query.schema.clone(),
         filter: query.filter.clone(),
         sort_by: query.sort_by.clone(),
@@ -851,7 +851,7 @@ pub async fn table_modal(
     }
 
     let tpl = TableModalTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         schema,
         name,
         rows,

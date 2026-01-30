@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::db::models::{CreateEndpoint, UpdateEndpoint};
-use crate::handlers::{base_path_url, build_ctx, connect_pg, get_active_endpoint, set_active_endpoint_cookie, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, set_active_endpoint_cookie, AppState};
 use crate::templates::{EndpointsListTemplate, EndpointsTemplate};
 
 #[derive(Deserialize)]
@@ -54,7 +54,7 @@ pub async fn list_endpoints(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let active = get_active_endpoint(&state, &jar).await;
-    let ctx = build_ctx(&state);
+    let ctx = build_ctx_with_endpoint(&state, active.as_ref());
 
     let tpl = EndpointsTemplate {
         ctx,

@@ -59,7 +59,7 @@
                     {% for s in schemas %}
                     <tr style="cursor: pointer;" onclick="window.location='{% if ctx.base_path == "/" %}/tables/{{ s.name }}/*{% else %}{{ ctx.base_path }}/tables/{{ s.name }}/*{% endif %}'">
                         <td class="text-muted">{{ s.num }}</td>
-                        <td><span class="badge bg-azure-lt">{{ s.name }}</span></td>
+                        <td><a href="{% if ctx.base_path == "/" %}/tables/{{ s.name }}/*{% else %}{{ ctx.base_path }}/tables/{{ s.name }}/*{% endif %}">{{ s.name }}</a></td>
                         <td>{{ s.table_count }}</td>
                         <td>{{ s.index_count }}</td>
                         <td>{{ s.total_size }}</td>

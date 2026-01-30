@@ -5,7 +5,7 @@ use sqlx::Row;
 use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 
-use crate::handlers::{base_path_url, build_ctx, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
 use crate::templates::{DashboardTemplate, TopTable};
 use crate::utils::format::bytes_to_human;
 
@@ -171,7 +171,7 @@ pub async fn dashboard(
     }
 
     let tpl = DashboardTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         title: "Dashboard | Postgres Explorer".to_string(),
         server_name: active.name,
         server_version,

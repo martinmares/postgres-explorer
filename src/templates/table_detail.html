@@ -41,6 +41,11 @@
         </a>
       </li>
       {% endif %}
+      <li class="nav-item" role="presentation">
+        <a href="#tab-triggers" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab" tabindex="-1">
+          <i class="ti ti-bolt me-1"></i>Triggers
+        </a>
+      </li>
     </ul>
   </div>
   <div class="card-body">
@@ -168,6 +173,14 @@
       </div>
       {% endif %}
 
+      <!-- Tab 5: Triggers -->
+      <div class="tab-pane" id="tab-triggers" role="tabpanel">
+        <div class="text-center py-5">
+          <div class="spinner-border text-muted" role="status"></div>
+          <div class="mt-2 text-muted">Loading triggers...</div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -187,11 +200,27 @@
   </div>
 </div>
 
+<!-- Modal pro Trigger DDL -->
+<div class="modal modal-blur fade" id="trigger-ddl-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="trigger-ddl-title">Trigger DDL</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="trigger-ddl-content" class="bg-dark text-white p-3 rounded" style="font-size: 0.875rem;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Lazy load tabs při kliknutí
 let columnsLoaded = false;
 let indexesLoaded = false;
 let partitionsLoaded = false;
+let triggersLoaded = false;
 
 document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', function(e) {
@@ -263,6 +292,16 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
           }
         });
     }
+
+    if (target === '#tab-triggers' && !triggersLoaded) {
+      triggersLoaded = true;
+      const url = '{% if ctx.base_path == "/" %}/tables/{{ schema }}/{{ name }}/triggers{% else %}{{ ctx.base_path }}/tables/{{ schema }}/{{ name }}/triggers{% endif %}';
+      fetch(url)
+        .then(r => r.text())
+        .then(html => {
+          document.getElementById('tab-triggers').innerHTML = html;
+        });
+    }
   });
 });
 
@@ -270,6 +309,12 @@ function showIndexDDL(name, ddl) {
   document.getElementById('index-ddl-title').textContent = 'Index: ' + name;
   document.getElementById('index-ddl-content').textContent = ddl;
   new bootstrap.Modal(document.getElementById('index-ddl-modal')).show();
+}
+
+function showTriggerDDL(name, ddl) {
+  document.getElementById('trigger-ddl-title').textContent = 'Trigger: ' + name;
+  document.getElementById('trigger-ddl-content').textContent = ddl;
+  new bootstrap.Modal(document.getElementById('trigger-ddl-modal')).show();
 }
 </script>
 

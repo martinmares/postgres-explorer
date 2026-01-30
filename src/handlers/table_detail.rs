@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 use chrono::{DateTime, Utc};
 
-use crate::handlers::{base_path_url, build_ctx, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
 use crate::templates::TableDetailTemplate;
 use crate::utils::format::bytes_to_human;
 
@@ -145,7 +145,7 @@ pub async fn table_detail(
     }
 
     let tpl = TableDetailTemplate {
-        ctx: build_ctx(&state),
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
         title: format!("{}.{} | Postgres Explorer", schema, name),
         schema,
         name,
@@ -296,7 +296,10 @@ pub async fn table_columns(
             html.push_str("</tbody></table></div>");
             Html(html)
         },
-        Err(_) => Html("<div class='alert alert-danger'>Failed to load columns</div>".to_string()),
+        Err(e) => {
+            tracing::error!("Failed to load columns for {}.{}: {}", schema, name, e);
+            Html(format!("<div class='alert alert-danger'>Failed to load columns: {}</div>", e))
+        },
     }
 }
 
@@ -381,7 +384,131 @@ pub async fn table_indexes(
             html.push_str("</tbody></table></div>");
             Html(html)
         },
-        Err(_) => Html("<div class='alert alert-danger'>Failed to load indexes</div>".to_string()),
+        Err(e) => {
+            tracing::error!("Failed to load indexes for {}.{}: {}", schema, name, e);
+            Html(format!("<div class='alert alert-danger'>Failed to load indexes: {}</div>", e))
+        },
+    }
+}
+
+// Lazy load triggers
+pub async fn table_triggers(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path((schema, name)): Path<(String, String)>,
+) -> Html<String> {
+    let active = match get_active_endpoint(&state, &jar).await {
+        Some(a) => a,
+        None => return Html("<div class='text-muted'>No active connection</div>".to_string()),
+    };
+
+    let pg = match connect_pg(&state, &active).await {
+        Ok(p) => p,
+        Err(_) => return Html("<div class='text-muted'>Connection failed</div>".to_string()),
+    };
+
+    let triggers = sqlx::query(
+        r#"
+        SELECT
+            t.tgname as trigger_name,
+            CASE t.tgtype::integer & 66
+                WHEN 2 THEN 'BEFORE'
+                WHEN 64 THEN 'INSTEAD OF'
+                ELSE 'AFTER'
+            END as timing,
+            concat_ws(' OR ',
+                CASE WHEN t.tgtype::integer & 4 = 4 THEN 'INSERT' END,
+                CASE WHEN t.tgtype::integer & 8 = 8 THEN 'DELETE' END,
+                CASE WHEN t.tgtype::integer & 16 = 16 THEN 'UPDATE' END,
+                CASE WHEN t.tgtype::integer & 32 = 32 THEN 'TRUNCATE' END
+            ) as event,
+            CASE t.tgtype::integer & 1
+                WHEN 1 THEN 'ROW'
+                ELSE 'STATEMENT'
+            END as level,
+            p.proname as function_name,
+            pg_get_triggerdef(t.oid) as definition,
+            obj_description(t.oid, 'pg_trigger') as comment,
+            CASE
+                WHEN t.tgenabled = 'O' THEN true
+                ELSE false
+            END as enabled
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        WHERE n.nspname = $1
+          AND c.relname = $2
+          AND NOT t.tgisinternal
+        ORDER BY t.tgname
+        "#,
+    )
+    .bind(&schema)
+    .bind(&name)
+    .fetch_all(&pg)
+    .await;
+
+    match triggers {
+        Ok(rows) if rows.is_empty() => Html("<div class='text-center text-muted py-5'>No triggers found</div>".to_string()),
+        Ok(rows) => {
+            tracing::debug!("Found {} triggers for {}.{}", rows.len(), schema, name);
+            let mut html = String::from("<div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Name</th><th>Timing</th><th>Event</th><th>Level</th><th>Function</th><th>Status</th><th>Actions</th></tr></thead><tbody>");
+
+            for row in rows {
+                let trigger_name: String = row.get("trigger_name");
+                let timing: String = row.get("timing");
+                let event: String = row.get("event");
+                let level: String = row.get("level");
+                let function_name: String = row.get("function_name");
+                let definition: String = row.get("definition");
+                let enabled: bool = row.get("enabled");
+
+                html.push_str(&format!("<tr><td><strong>{}</strong></td>", trigger_name));
+
+                // Timing badge
+                let timing_color = match timing.as_str() {
+                    "BEFORE" => "blue",
+                    "AFTER" => "green",
+                    "INSTEAD OF" => "purple",
+                    _ => "gray"
+                };
+                html.push_str(&format!("<td><span class='badge bg-{}-lt text-{}-fg'>{}</span></td>", timing_color, timing_color, timing));
+
+                // Event badge
+                let event_color = match event.as_str() {
+                    "INSERT" => "green",
+                    "UPDATE" => "yellow",
+                    "DELETE" => "red",
+                    "TRUNCATE" => "orange",
+                    _ => "gray"
+                };
+                html.push_str(&format!("<td><span class='badge bg-{}-lt text-{}-fg'>{}</span></td>", event_color, event_color, event));
+
+                // Level
+                html.push_str(&format!("<td><span class='badge bg-gray-lt text-gray-fg'>{}</span></td>", level));
+
+                // Function
+                html.push_str(&format!("<td><code class='text-muted'>{}</code></td>", function_name));
+
+                // Status
+                if enabled {
+                    html.push_str("<td><span class='badge bg-success-lt text-success-fg'><i class='ti ti-check'></i> Enabled</span></td>");
+                } else {
+                    html.push_str("<td><span class='badge bg-danger-lt text-danger-fg'><i class='ti ti-x'></i> Disabled</span></td>");
+                }
+
+                // Actions - DDL viewer
+                let def_escaped = definition.replace('`', "\\`").replace('\'', "\\'");
+                html.push_str(&format!("<td><button class='btn btn-sm btn-ghost-secondary' onclick='showTriggerDDL(\"{}\", `{}`)' title='Show DDL'><i class='ti ti-code'></i></button></td></tr>", trigger_name, def_escaped));
+            }
+
+            html.push_str("</tbody></table></div>");
+            Html(html)
+        },
+        Err(e) => {
+            tracing::error!("Failed to load triggers for {}.{}: {}", schema, name, e);
+            Html(format!("<div class='alert alert-danger'>Failed to load triggers: {}</div>", e))
+        },
     }
 }
 
@@ -486,6 +613,9 @@ pub async fn table_partitions(
 
             Html(html)
         },
-        Err(_) => Html("<div class='alert alert-danger'>Failed to load partitions</div>".to_string()),
+        Err(e) => {
+            tracing::error!("Failed to load partitions for {}.{}: {}", schema, name, e);
+            Html(format!("<div class='alert alert-danger'>Failed to load partitions: {}</div>", e))
+        },
     }
 }

@@ -92,4 +92,99 @@ SELECT
   (ARRAY['google','newsletter','direct','partner'])[1 + (g % 4)]
 FROM generate_series(1, 8000) AS g;
 
+-- Vytvoř tabulku pro audit log
+CREATE TABLE IF NOT EXISTS sales.order_audit (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT NOT NULL,
+    action TEXT NOT NULL,
+    changed_by TEXT,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    old_status TEXT,
+    new_status TEXT
+);
+
+-- Audit trigger function pro změny status v orders
+CREATE OR REPLACE FUNCTION sales.audit_order_status_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
+        INSERT INTO sales.order_audit (order_id, action, changed_by, old_status, new_status)
+        VALUES (NEW.id, 'status_change', current_user, OLD.status, NEW.status);
+    ELSIF TG_OP = 'INSERT' THEN
+        INSERT INTO sales.order_audit (order_id, action, changed_by, new_status)
+        VALUES (NEW.id, 'created', current_user, NEW.status);
+    ELSIF TG_OP = 'DELETE' THEN
+        INSERT INTO sales.order_audit (order_id, action, changed_by, old_status)
+        VALUES (OLD.id, 'deleted', current_user, OLD.status);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger pro audit orders
+CREATE TRIGGER trg_audit_order_changes
+    AFTER INSERT OR UPDATE OR DELETE ON sales.orders
+    FOR EACH ROW
+    EXECUTE FUNCTION sales.audit_order_status_changes();
+
+-- Vytvoř tabulku pro email notifikace
+CREATE TABLE IF NOT EXISTS public.customer_emails (
+    id BIGSERIAL PRIMARY KEY,
+    customer_id BIGINT NOT NULL REFERENCES public.customers(id),
+    email_type TEXT NOT NULL,
+    sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    subject TEXT
+);
+
+-- Function pro automatické poslání welcome emailu
+CREATE OR REPLACE FUNCTION public.send_welcome_email()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.customer_emails (customer_id, email_type, subject)
+    VALUES (NEW.id, 'welcome', 'Welcome to our platform!');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger před vložením nového zákazníka
+CREATE TRIGGER trg_send_welcome_email
+    AFTER INSERT ON public.customers
+    FOR EACH ROW
+    EXECUTE FUNCTION public.send_welcome_email();
+
+-- Function pro validaci emailu
+CREATE OR REPLACE FUNCTION public.validate_customer_email()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.email !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$' THEN
+        RAISE EXCEPTION 'Invalid email format: %', NEW.email;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- BEFORE trigger pro validaci emailu
+CREATE TRIGGER trg_validate_email
+    BEFORE INSERT OR UPDATE ON public.customers
+    FOR EACH ROW
+    EXECUTE FUNCTION public.validate_customer_email();
+
+-- Function pro aktualizaci timestampu
+CREATE OR REPLACE FUNCTION sales.update_order_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.created_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Disabled trigger (příklad vypnutého triggeru)
+CREATE TRIGGER trg_update_timestamp
+    BEFORE UPDATE ON sales.orders
+    FOR EACH ROW
+    EXECUTE FUNCTION sales.update_order_timestamp();
+
+-- Vypni tento trigger jako ukázku
+ALTER TABLE sales.orders DISABLE TRIGGER trg_update_timestamp;
+
 ANALYZE;

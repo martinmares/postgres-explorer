@@ -83,7 +83,7 @@
                     {% for t in tables %}
                     <tr>
                         <td class="text-muted">{{ t.num }}</td>
-                        <td><span class="badge bg-azure-lt">{{ t.schema }}</span></td>
+                        <td><a href="{% if base_path == "/" %}/tables/{{ t.schema }}/*{% else %}{{ base_path }}/tables/{{ t.schema }}/*{% endif %}">{{ t.schema }}</a></td>
                         <td>
                             <div>
                                 <a href="{% if base_path == "/" %}/tables/{{ t.schema }}/{{ t.name }}/detail{% else %}{{ base_path }}/tables/{{ t.schema }}/{{ t.name }}/detail{% endif %}">
