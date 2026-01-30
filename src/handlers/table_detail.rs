@@ -184,6 +184,26 @@ pub async fn table_columns(
         Err(_) => return Html("<div class='text-muted'>Connection failed</div>".to_string()),
     };
 
+    // Nejdřív získej OID tabulky
+    let table_oid = match sqlx::query_scalar::<_, i64>(
+        "SELECT c.oid::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2"
+    )
+    .bind(&schema)
+    .bind(&name)
+    .fetch_optional(&pg)
+    .await
+    {
+        Ok(Some(oid)) => oid,
+        Ok(None) => {
+            tracing::warn!("Table {}.{} not found for columns", schema, name);
+            return Html("<div class='text-center text-muted py-5'>Table not found</div>".to_string());
+        }
+        Err(e) => {
+            tracing::error!("Failed to get table OID for {}.{}: {}", schema, name, e);
+            return Html(format!("<div class='alert alert-danger'>Failed to get table info: {}</div>", e));
+        }
+    };
+
     let cols = sqlx::query(
         r#"
         SELECT DISTINCT ON (a.attnum)
@@ -205,7 +225,7 @@ pub async fn table_columns(
             SELECT a.attnum, true as is_pk
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-            WHERE i.indrelid = $1::regclass AND i.indisprimary
+            WHERE i.indrelid = $1 AND i.indisprimary
         ) pk ON pk.attnum = a.attnum
         LEFT JOIN (
             SELECT a.attnum, nf.nspname || '.' || cf.relname as foreign_table, af.attname as foreign_column
@@ -214,34 +234,33 @@ pub async fn table_columns(
             JOIN pg_class cf ON cf.oid = con.confrelid
             JOIN pg_namespace nf ON nf.oid = cf.relnamespace
             JOIN pg_attribute af ON af.attrelid = con.confrelid AND af.attnum = ANY(con.confkey)
-            WHERE con.conrelid = $1::regclass AND con.contype = 'f'
+            WHERE con.conrelid = $1 AND con.contype = 'f'
         ) fk ON fk.attnum = a.attnum
         LEFT JOIN (
             SELECT a.attnum, true as is_unique
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-            WHERE i.indrelid = $1::regclass AND i.indisunique AND NOT i.indisprimary
+            WHERE i.indrelid = $1 AND i.indisunique AND NOT i.indisprimary
         ) unq ON unq.attnum = a.attnum
         LEFT JOIN (
             SELECT a.attnum, true as is_indexed
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-            WHERE i.indrelid = $1::regclass
+            WHERE i.indrelid = $1
         ) idx ON idx.attnum = a.attnum
-        WHERE n.nspname = $2 AND c.relname = $3 AND a.attnum > 0 AND NOT a.attisdropped
+        WHERE c.oid = $1 AND a.attnum > 0 AND NOT a.attisdropped
         GROUP BY c.oid, a.attnum, a.attname, a.atttypid, a.atttypmod, a.attnotnull, ad.adbin, ad.adrelid, pk.is_pk
         ORDER BY a.attnum
         "#,
     )
-    .bind(format!("{}.{}", schema, name))
-    .bind(&schema)
-    .bind(&name)
+    .bind(table_oid)
     .fetch_all(&pg)
     .await;
 
     match cols {
         Ok(rows) if rows.is_empty() => Html("<div class='text-center text-muted py-5'>No columns found</div>".to_string()),
         Ok(rows) => {
+            tracing::debug!("Found {} columns for {}.{}", rows.len(), schema, name);
             let mut html = String::from("<div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Name</th><th>Type</th><th>Nullable</th><th>Default</th><th>Description</th><th>Constraints</th></tr></thead><tbody>");
             
             for row in rows {
