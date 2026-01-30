@@ -54,7 +54,7 @@ struct SchemaRowDb {
 pub async fn list_schemas(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
-    Query(query): Query<SchemasQuery>,
+    Query(mut query): Query<SchemasQuery>,
 ) -> Result<Response, (axum::http::StatusCode, String)> {
     let active = get_active_endpoint(&state, &jar).await;
     if active.is_none() {
@@ -62,6 +62,23 @@ pub async fn list_schemas(
         return Ok(Redirect::to(&target).into_response());
     }
     let active = active.unwrap();
+
+    let filter_cookie_name = format!("schemas_filter_{}", active.id);
+    let per_page_cookie_name = format!("schemas_per_page_{}", active.id);
+
+    if query.filter == "*" {
+        if let Some(cookie) = jar.get(&filter_cookie_name) {
+            query.filter = cookie.value().to_string();
+        }
+    }
+
+    if query.per_page == 50 {
+        if let Some(cookie) = jar.get(&per_page_cookie_name) {
+            if let Ok(pp) = cookie.value().parse::<usize>() {
+                query.per_page = pp;
+            }
+        }
+    }
 
     let mut all_schemas: Vec<SchemaRowDb> = match connect_pg(&state, &active).await {
         Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
@@ -185,9 +202,21 @@ pub async fn list_schemas(
         schemas: paginated_schemas,
     };
 
+    let mut jar = jar;
+    let filter_cookie = axum_extra::extract::cookie::Cookie::build((filter_cookie_name, query.filter.clone()))
+        .path("/")
+        .http_only(true)
+        .build();
+    let per_page_cookie = axum_extra::extract::cookie::Cookie::build((per_page_cookie_name, query.per_page.to_string()))
+        .path("/")
+        .http_only(true)
+        .build();
+    jar = jar.add(filter_cookie);
+    jar = jar.add(per_page_cookie);
+
     tpl.render()
         .map(Html)
-        .map(|h| h.into_response())
+        .map(|h| (jar, h).into_response())
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
@@ -202,6 +231,9 @@ pub async fn schemas_table(
         return Err((axum::http::StatusCode::BAD_REQUEST, "No active endpoint".to_string()));
     }
     let active = active.unwrap();
+
+    let filter_cookie_name = format!("schemas_filter_{}", active.id);
+    let per_page_cookie_name = format!("schemas_per_page_{}", active.id);
 
     let mut all_schemas: Vec<SchemaRowDb> = match connect_pg(&state, &active).await {
         Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
@@ -321,9 +353,21 @@ pub async fn schemas_table(
         schemas: paginated_schemas,
     };
 
+    let mut jar = jar;
+    let filter_cookie = axum_extra::extract::cookie::Cookie::build((filter_cookie_name, query.filter.clone()))
+        .path("/")
+        .http_only(true)
+        .build();
+    let per_page_cookie = axum_extra::extract::cookie::Cookie::build((per_page_cookie_name, query.per_page.to_string()))
+        .path("/")
+        .http_only(true)
+        .build();
+    jar = jar.add(filter_cookie);
+    jar = jar.add(per_page_cookie);
+
     tpl.render()
         .map(Html)
-        .map(|h| h.into_response())
+        .map(|h| (jar, h).into_response())
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 

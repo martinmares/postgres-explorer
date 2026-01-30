@@ -24,22 +24,15 @@
                             name="filter"
                             placeholder="např: public, user_* -test"
                             value="{{ filter }}"
-                            hx-get="/schemas/table"
-                            hx-trigger="input changed delay:500ms, search"
-                            hx-target="#schemas-table"
-                            hx-include="[name='per_page'], [name='sort_by'], [name='sort_order']"
-                            hx-swap="outerHTML">
+                            oninput="handleSchemasFilter(this)">
                     </div>
                     <div class="col-auto">
                         <label class="form-label">Per page</label>
                         <select
                             class="form-select"
                             name="per_page"
-                            hx-get="/schemas/table"
-                            hx-trigger="change"
-                            hx-target="#schemas-table"
-                            hx-include="#filter-input, [name='sort_by'], [name='sort_order']"
-                            hx-swap="outerHTML">
+                            id="per-page-select"
+                            onchange="applySchemasPerPageChange()">
                             <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
                             <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
                             <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
@@ -231,26 +224,70 @@
 </div>
 
 <script>
+// Filter + per page using fetch to avoid htmx swap bugs
+if (typeof window.schemasFilterTimer === 'undefined') {
+    window.schemasFilterTimer = null;
+}
+
+function loadSchemas(url) {
+    const target = document.getElementById('schemas-table');
+    if (!target) return;
+    fetch(url, { method: 'GET' })
+        .then(r => r.text())
+        .then(html => { target.innerHTML = html; })
+        .catch(err => { target.innerHTML = `<div class="text-danger">Failed to load schemas: ${err}</div>`; });
+}
+
+function handleSchemasFilter(input) {
+    clearTimeout(window.schemasFilterTimer);
+    window.schemasFilterTimer = setTimeout(() => {
+        const filter = (input.value || '*').trim() || '*';
+        const perPage = document.getElementById('per-page-select').value;
+        const sortBy = document.querySelector('[name="sort_by"]').value || 'name';
+        const sortOrder = document.querySelector('[name="sort_order"]').value || 'asc';
+        loadSchemas(`/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
+    }, 400);
+}
+
+function applySchemasPerPageChange() {
+    const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
+    const perPage = document.getElementById('per-page-select').value;
+    const sortBy = document.querySelector('[name="sort_by"]').value || 'name';
+    const sortOrder = document.querySelector('[name="sort_order"]').value || 'asc';
+    loadSchemas(`/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
+}
+
+// Sort headers use fetch as well
 document.querySelectorAll('.sortable').forEach(th => {
     th.style.cursor = 'pointer';
     th.addEventListener('click', function() {
         const sortBy = this.dataset.sort;
-        const currentSortBy = '{{ sort_by }}';
-        const currentSortOrder = '{{ sort_order }}';
+        const currentSortBy = document.querySelector('[name="sort_by"]').value || 'name';
+        const currentSortOrder = document.querySelector('[name="sort_order"]').value || 'asc';
 
         let newSortOrder = 'asc';
         if (sortBy === currentSortBy && currentSortOrder === 'asc') {
             newSortOrder = 'desc';
         }
 
-        const filter = document.getElementById('filter-input').value;
-        const perPage = document.querySelector('[name="per_page"]').value;
+        document.querySelector('[name="sort_by"]').value = sortBy;
+        document.querySelector('[name="sort_order"]').value = newSortOrder;
 
-        htmx.ajax('GET', `/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`, {
-            target: '#schemas-table',
-            swap: 'outerHTML'
-        });
+        const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
+        const perPage = document.getElementById('per-page-select').value;
+        loadSchemas(`/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`);
     });
+});
+
+// Delegated pagination clicks (hx-get)
+document.addEventListener('click', function(evt) {
+    const el = evt.target.closest('[hx-get]');
+    if (!el) return;
+    if (!el.closest('#schemas-table')) return;
+    const url = el.getAttribute('hx-get');
+    if (!url) return;
+    evt.preventDefault();
+    loadSchemas(url);
 });
 </script>
 
