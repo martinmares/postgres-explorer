@@ -387,7 +387,7 @@ pub async fn table_data_preview(
                             _ => v.to_string(),
                         };
                         html.push_str(&format!(
-                            "<tr><td class='text-muted pe-2'>{}</td><td class='text-end text-truncate' style='max-width:180px'>{}</td></tr>",
+                            "<tr><td class='text-muted pe-2'>{}</td><td class='text-truncate' style='max-width:220px'>{}</td></tr>",
                             k, val
                         ));
                     }
