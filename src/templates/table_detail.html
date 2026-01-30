@@ -350,7 +350,7 @@ function reindexSingle(schema, indexName) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
-  fetch(basePath + '/reindex/' + encodeURIComponent(schema) + '/' + encodeURIComponent(indexName), { method: 'POST' })
+  fetch(basePath + '/maintenance/reindex-index/' + encodeURIComponent(schema) + '/' + encodeURIComponent(indexName), { method: 'POST' })
     .then(r => r.json())
     .then(data => {
       if (data.success) {
@@ -378,7 +378,7 @@ function reindexAllIndexes() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
 
-  fetch(basePath + '/reindex/{{ schema }}/{{ name }}', { method: 'POST' })
+  fetch(basePath + '/maintenance/reindex-table/{{ schema }}/{{ name }}', { method: 'POST' })
     .then(r => r.json())
     .then(data => {
       if (data.success) {
