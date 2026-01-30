@@ -113,16 +113,44 @@
   }
 
   function bindEndpointEvents() {
+    function refreshEndpointsList() {
+      const base = window.__BASE_PATH__ || '';
+      return fetch(`${base}/endpoints`, { method: 'GET' })
+        .then(res => res.text())
+        .then(pageHtml => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(pageHtml, 'text/html');
+          const newList = doc.getElementById('endpoints-list');
+          const list = document.getElementById('endpoints-list');
+          if (newList && list) {
+            list.innerHTML = newList.innerHTML;
+            return;
+          }
+          window.location.href = `${base}/endpoints`;
+        })
+        .catch(() => {
+          window.location.href = `${base}/endpoints`;
+        });
+    }
+
     const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
     if (confirmDeleteBtn && !confirmDeleteBtn.dataset.bound) {
       confirmDeleteBtn.dataset.bound = 'true';
       confirmDeleteBtn.addEventListener('click', function () {
         const id = window.__pgDeleteEndpointId;
         if (!id) return;
-        htmx.ajax('DELETE', `/endpoints/${id}`, {
-          target: '#endpoints-list',
-          swap: 'innerHTML'
-        });
+        const base = window.__BASE_PATH__ || '';
+        const url = `${base}/endpoints/${id}`;
+        fetch(url, { method: 'DELETE' })
+          .then(res => {
+            if (!res.ok) {
+              throw new Error('Delete failed');
+            }
+            return refreshEndpointsList();
+          })
+          .catch(() => {
+            window.location.href = `${base}/endpoints`;
+          });
         const modalEl = document.getElementById('modal-delete');
         const modal = bootstrap.Modal.getInstance(modalEl);
         if (modal) modal.hide();
@@ -161,6 +189,22 @@
             document.body.style.paddingRight = '';
           }, 100);
         }
+      });
+    }
+
+    if (!document.body.dataset.endpointsAfterRequestBound) {
+      document.body.dataset.endpointsAfterRequestBound = 'true';
+      document.body.addEventListener('htmx:afterRequest', function (evt) {
+        const form = document.querySelector('#modal-endpoint form');
+        if (!form || evt.detail.requestConfig.elt !== form) return;
+        if (!evt.detail.xhr || evt.detail.xhr.status >= 400) return;
+        refreshEndpointsList()
+          .finally(() => {
+            const modalElement = document.getElementById('modal-endpoint');
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) modal.hide();
+            resetEndpointForm();
+          });
       });
     }
 

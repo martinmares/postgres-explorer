@@ -2,7 +2,7 @@ use axum::{
     extract::State,
     response::{Html, IntoResponse, Redirect, Response},
     Form,
-    http::{StatusCode, HeaderMap},
+    http::StatusCode,
 };
 use axum_extra::extract::CookieJar;
 use askama::Template;
@@ -136,7 +136,7 @@ pub async fn select_endpoint(
 
 pub async fn update_endpoint(
     State(state): State<Arc<AppState>>,
-    _jar: CookieJar,
+    jar: CookieJar,
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<UpdateEndpointForm>,
 ) -> Result<Response, (StatusCode, String)> {
@@ -172,15 +172,19 @@ pub async fn update_endpoint(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Vrátíme HTMX redirect na /endpoints
-    let mut headers = HeaderMap::new();
-    headers.insert("HX-Redirect", base_path_url(&state, "/endpoints").parse().unwrap());
-    Ok((StatusCode::OK, headers).into_response())
+    let endpoints = state
+        .db
+        .get_endpoints()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let active = get_active_endpoint(&state, &jar).await;
+
+    render_list(endpoints, active.as_ref().map(|e| e.id).unwrap_or(-1))
 }
 
 pub async fn delete_endpoint(
     State(state): State<Arc<AppState>>,
-    _jar: CookieJar,
+    jar: CookieJar,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
     state
@@ -189,10 +193,14 @@ pub async fn delete_endpoint(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Vrátíme HTMX redirect na /endpoints
-    let mut headers = HeaderMap::new();
-    headers.insert("HX-Redirect", base_path_url(&state, "/endpoints").parse().unwrap());
-    Ok((StatusCode::OK, headers).into_response())
+    let endpoints = state
+        .db
+        .get_endpoints()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let active = get_active_endpoint(&state, &jar).await;
+
+    render_list(endpoints, active.as_ref().map(|e| e.id).unwrap_or(-1))
 }
 
 pub async fn test_endpoint(
