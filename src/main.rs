@@ -93,6 +93,7 @@ async fn main() -> Result<()> {
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),
         )
+        .route("/tuning", get(handlers::tuning::tuning_page))
         .route("/dev", get(handlers::console::console))
         .nest_service("/static", axum::routing::get_service(ServeDir::new("static")))
         .with_state(state.clone());

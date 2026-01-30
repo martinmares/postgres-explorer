@@ -746,19 +746,19 @@ pub async fn table_relationships(
     // Generate Mermaid ER diagram
     let mut mermaid = String::from("erDiagram\n");
 
-    let current_table_id = format!("{}_{}", schema, name).replace('.', "_");
+    let current_table = format!("{}.{}", schema, name);
 
     // Add outgoing relationships (this table -> foreign table)
     for row in &outgoing {
         let foreign_schema: String = row.get("foreign_schema");
         let foreign_table: String = row.get("foreign_table");
-        let foreign_id = format!("{}_{}", foreign_schema, foreign_table).replace('.', "_");
+        let foreign_table_name = format!("{}.{}", foreign_schema, foreign_table);
         let local_cols: String = row.get("local_columns");
         let foreign_cols: String = row.get("foreign_columns");
 
         mermaid.push_str(&format!(
-            "    {} }}o--|| {} : \"{} to {}\"\n",
-            current_table_id, foreign_id, local_cols, foreign_cols
+            "    \"{}\" }}o--|| \"{}\" : \"{} to {}\"\n",
+            current_table, foreign_table_name, local_cols, foreign_cols
         ));
     }
 
@@ -766,13 +766,13 @@ pub async fn table_relationships(
     for row in &incoming {
         let ref_schema: String = row.get("referencing_schema");
         let ref_table: String = row.get("referencing_table");
-        let ref_id = format!("{}_{}", ref_schema, ref_table).replace('.', "_");
+        let ref_table_name = format!("{}.{}", ref_schema, ref_table);
         let ref_cols: String = row.get("referencing_columns");
         let referenced_cols: String = row.get("referenced_columns");
 
         mermaid.push_str(&format!(
-            "    {} }}o--|| {} : \"{} to {}\"\n",
-            ref_id, current_table_id, ref_cols, referenced_cols
+            "    \"{}\" }}o--|| \"{}\" : \"{} to {}\"\n",
+            ref_table_name, current_table, ref_cols, referenced_cols
         ));
     }
 

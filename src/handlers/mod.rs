@@ -6,6 +6,7 @@ pub mod maintenance;
 pub mod schemas;
 pub mod table_detail;
 pub mod tables;
+pub mod tuning;
 
 use std::sync::Arc;
 use crate::templates::AppContext;

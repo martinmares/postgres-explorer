@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}Tuning - Postgres Explorer{% endblock %}
+{% block nav_tuning %}active{% endblock %}
+{% block page_title %}Database Tuning{% endblock %}
+{% block content %}
+
+<div class="row row-deck row-cards">
+
+  <!-- pg_stat_statements warning -->
+  {% if !pg_stat_statements_enabled %}
+  <div class="col-12">
+    <div class="alert alert-warning">
+      <h4 class="alert-title"><i class="ti ti-alert-triangle me-2"></i>pg_stat_statements not enabled</h4>
+      <div class="text-muted">
+        Query analysis requires pg_stat_statements extension. Enable it with:
+        <code>CREATE EXTENSION pg_stat_statements;</code>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Full Table Scan Queries -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-table-off me-2"></i>Potential Full Table Scans</h3>
+        <div class="card-actions">
+          <span class="badge bg-red-lt text-red-fg">{{ full_scan_queries.len() }} queries</span>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if full_scan_queries.is_empty() %}
+          <div class="text-center text-muted py-4">No problematic queries found</div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-vcenter">
+              <thead>
+                <tr>
+                  <th>Query</th>
+                  <th class="text-end">Calls</th>
+                  <th class="text-end">Total Time (ms)</th>
+                  <th class="text-end">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for q in full_scan_queries %}
+                <tr>
+                  <td><code class="small">{{ q.query }}</code></td>
+                  <td class="text-end">{{ q.calls }}</td>
+                  <td class="text-end">{{ q.total_time_ms }}</td>
+                  <td class="text-end">{{ q.rows }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Over-indexed Tables -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-key me-2"></i>Over-indexed Tables</h3>
+        <div class="card-actions">
+          <span class="badge bg-yellow-lt text-yellow-fg">{{ over_indexed_tables.len() }} tables</span>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if over_indexed_tables.is_empty() %}
+          <div class="text-center text-muted py-4">No over-indexed tables found</div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-vcenter">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th class="text-end">Index Count</th>
+                  <th class="text-end">Index Size</th>
+                  <th class="text-end">Table Size</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in over_indexed_tables %}
+                <tr>
+                  <td>
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail{% endif %}">
+                      <strong>{{ t.schema }}.{{ t.table }}</strong>
+                    </a>
+                  </td>
+                  <td class="text-end"><span class="badge bg-orange-lt text-orange-fg">{{ t.index_count }}</span></td>
+                  <td class="text-end">{{ t.total_index_size }}</td>
+                  <td class="text-end">{{ t.table_size }}</td>
+                  <td>
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail#tab-indexes{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail#tab-indexes{% endif %}" class="btn btn-sm btn-ghost-primary">
+                      View Indexes
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Fragmented Tables -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-table-column me-2"></i>Fragmented Tables</h3>
+        <div class="card-actions">
+          <span class="badge bg-red-lt text-red-fg">{{ fragmented_tables.len() }} tables</span>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if fragmented_tables.is_empty() %}
+          <div class="text-center text-muted py-4">No fragmented tables found</div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-vcenter">
+              <thead>
+                <tr>
+                  <th>Table</th>
+                  <th class="text-end">Size</th>
+                  <th class="text-end">Bloat %</th>
+                  <th class="text-end">Wasted Space</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in fragmented_tables %}
+                <tr>
+                  <td>
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail{% endif %}">
+                      <strong>{{ t.schema }}.{{ t.table }}</strong>
+                    </a>
+                  </td>
+                  <td class="text-end">{{ t.size }}</td>
+                  <td class="text-end">
+                    <span class="badge bg-red-lt text-red-fg">{{ t.bloat_pct }}%</span>
+                  </td>
+                  <td class="text-end">{{ t.wasted_space }}</td>
+                  <td>
+                    <button class="btn btn-sm btn-primary" onclick="vacuumTable('{{ t.schema }}', '{{ t.table }}')">
+                      <i class="ti ti-trash me-1"></i>VACUUM
+                    </button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Fragmented Indexes -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-sort-ascending me-2"></i>Potentially Fragmented Indexes</h3>
+        <div class="card-actions">
+          <span class="badge bg-orange-lt text-orange-fg">{{ fragmented_indexes.len() }} indexes</span>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if fragmented_indexes.is_empty() %}
+          <div class="text-center text-muted py-4">No fragmented indexes found</div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-vcenter">
+              <thead>
+                <tr>
+                  <th>Index</th>
+                  <th>Table</th>
+                  <th class="text-end">Size</th>
+                  <th class="text-end">Est. Bloat %</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for i in fragmented_indexes %}
+                <tr>
+                  <td><code>{{ i.index }}</code></td>
+                  <td>
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ i.schema }}/{{ i.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ i.schema }}/{{ i.table }}/detail{% endif %}">
+                      {{ i.schema }}.{{ i.table }}
+                    </a>
+                  </td>
+                  <td class="text-end">{{ i.size }}</td>
+                  <td class="text-end">
+                    <span class="badge bg-orange-lt text-orange-fg">{{ i.bloat_pct }}%</span>
+                  </td>
+                  <td>
+                    <button class="btn btn-sm btn-warning" onclick="reindexIndex('{{ i.schema }}', '{{ i.index }}')">
+                      <i class="ti ti-refresh me-1"></i>REINDEX
+                    </button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+
+function vacuumTable(schema, table) {
+  if (!confirm(`Run VACUUM on ${schema}.${table}?`)) return;
+  
+  fetch(`${basePath}/maintenance/vacuum/${schema}/${table}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        alert('VACUUM completed successfully!');
+        location.reload();
+      } else {
+        alert('VACUUM failed: ' + (data.error || 'Unknown error'));
+      }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function reindexIndex(schema, index) {
+  if (!confirm(`Run REINDEX on ${schema}.${index}?`)) return;
+  
+  fetch(`${basePath}/maintenance/reindex-index/${schema}/${index}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        alert('REINDEX completed successfully!');
+        location.reload();
+      } else {
+        alert('REINDEX failed: ' + (data.error || 'Unknown error'));
+      }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+</script>
+
+{% endblock %}

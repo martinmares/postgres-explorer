@@ -261,3 +261,14 @@ pub struct TopTable {
     pub schema_filter_url: String,
     pub table_filter_url: String,
 }
+
+#[derive(Template)]
+#[template(path = "tuning.html")]
+pub struct TuningTemplate {
+    pub ctx: AppContext,
+    pub pg_stat_statements_enabled: bool,
+    pub full_scan_queries: Vec<crate::handlers::tuning::FullScanQuery>,
+    pub over_indexed_tables: Vec<crate::handlers::tuning::OverIndexedTable>,
+    pub fragmented_tables: Vec<crate::handlers::tuning::FragmentedTable>,
+    pub fragmented_indexes: Vec<crate::handlers::tuning::FragmentedIndex>,
+}
