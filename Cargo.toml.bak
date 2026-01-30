@@ -1,0 +1,26 @@
+[package]
+name = "postgres-explorer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+askama = "0.12"
+axum = "0.8"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+dirs = "5"
+hex = "0.4"
+rand = "0.8"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.7", features = ["sqlite", "postgres", "runtime-tokio", "macros", "tls-rustls"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+aes-gcm = "0.10"
+tower-http = { version = "0.5", features = ["fs"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+urlencoding = "2"
+chrono = "0.4"

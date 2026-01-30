@@ -34,6 +34,13 @@
           <i class="ti ti-sort-ascending me-1"></i>Indexes
         </a>
       </li>
+      {% if table_type == "partitioned table" %}
+      <li class="nav-item" role="presentation">
+        <a href="#tab-partitions" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab" tabindex="-1">
+          <i class="ti ti-layout-distribute-vertical me-1"></i>Partitions
+        </a>
+      </li>
+      {% endif %}
     </ul>
   </div>
   <div class="card-body">
@@ -151,6 +158,16 @@
         </div>
       </div>
 
+      <!-- Tab 4: Partitions (jen pro partitioned tables) -->
+      {% if table_type == "partitioned table" %}
+      <div class="tab-pane" id="tab-partitions" role="tabpanel">
+        <div class="text-center py-5">
+          <div class="spinner-border text-muted" role="status"></div>
+          <div class="mt-2 text-muted">Loading partitions...</div>
+        </div>
+      </div>
+      {% endif %}
+
     </div>
   </div>
 </div>
@@ -174,11 +191,12 @@
 // Lazy load tabs při kliknutí
 let columnsLoaded = false;
 let indexesLoaded = false;
+let partitionsLoaded = false;
 
 document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', function(e) {
     const target = e.target.getAttribute('href');
-    
+
     if (target === '#tab-columns' && !columnsLoaded) {
       columnsLoaded = true;
       const url = '{% if ctx.base_path == "/" %}/tables/{{ schema }}/{{ name }}/columns{% else %}{{ ctx.base_path }}/tables/{{ schema }}/{{ name }}/columns{% endif %}';
@@ -188,7 +206,7 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
           document.getElementById('tab-columns').innerHTML = html;
         });
     }
-    
+
     if (target === '#tab-indexes' && !indexesLoaded) {
       indexesLoaded = true;
       const url = '{% if ctx.base_path == "/" %}/tables/{{ schema }}/{{ name }}/indexes{% else %}{{ ctx.base_path }}/tables/{{ schema }}/{{ name }}/indexes{% endif %}';
@@ -196,6 +214,16 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
         .then(r => r.text())
         .then(html => {
           document.getElementById('tab-indexes').innerHTML = html;
+        });
+    }
+
+    if (target === '#tab-partitions' && !partitionsLoaded) {
+      partitionsLoaded = true;
+      const url = '{% if ctx.base_path == "/" %}/tables/{{ schema }}/{{ name }}/partitions{% else %}{{ ctx.base_path }}/tables/{{ schema }}/{{ name }}/partitions{% endif %}';
+      fetch(url)
+        .then(r => r.text())
+        .then(html => {
+          document.getElementById('tab-partitions').innerHTML = html;
         });
     }
   });

@@ -384,3 +384,86 @@ pub async fn table_indexes(
         Err(_) => Html("<div class='alert alert-danger'>Failed to load indexes</div>".to_string()),
     }
 }
+
+// Lazy load partitions
+pub async fn table_partitions(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path((schema, name)): Path<(String, String)>,
+) -> Html<String> {
+    let active = match get_active_endpoint(&state, &jar).await {
+        Some(a) => a,
+        None => return Html("<div class='text-muted'>No active connection</div>".to_string()),
+    };
+
+    let pg = match connect_pg(&state, &active).await {
+        Ok(p) => p,
+        Err(_) => return Html("<div class='text-muted'>Connection failed</div>".to_string()),
+    };
+
+    let parts = sqlx::query(
+        r#"
+        SELECT
+            c.relname as partition_name,
+            n.nspname as partition_schema,
+            c.reltuples::bigint as rows,
+            pg_total_relation_size(c.oid) as size_bytes,
+            (SELECT count(*) FROM pg_index i WHERE i.indrelid = c.oid) as index_count,
+            pg_get_expr(c.relpartbound, c.oid) as partition_bound
+        FROM pg_inherits i
+        JOIN pg_class c ON c.oid = i.inhrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE i.inhparent = (
+            SELECT pc.oid FROM pg_class pc
+            JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+            WHERE pn.nspname = $1 AND pc.relname = $2
+        )
+        ORDER BY c.relname
+        "#,
+    )
+    .bind(&schema)
+    .bind(&name)
+    .fetch_all(&pg)
+    .await;
+
+    match parts {
+        Ok(rows) if rows.is_empty() => Html("<div class='text-center text-muted py-5'>No partitions found</div>".to_string()),
+        Ok(rows) => {
+            let mut html = String::from("<div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Partition</th><th>Schema</th><th class='text-end'>Rows</th><th class='text-end'>Size</th><th class='text-end'>Indexes</th><th>Bounds</th></tr></thead><tbody>");
+            
+            let mut total_rows: i64 = 0;
+            let mut total_size: i64 = 0;
+            let mut total_indexes: i64 = 0;
+
+            for row in rows {
+                let part_name: String = row.get("partition_name");
+                let part_schema: String = row.get("partition_schema");
+                let part_rows: i64 = row.get("rows");
+                let size_bytes: i64 = row.get("size_bytes");
+                let idx_count: i64 = row.get("index_count");
+                let bounds: String = row.try_get("partition_bound").unwrap_or_default();
+                
+                total_rows += part_rows;
+                total_size += size_bytes;
+                total_indexes += idx_count;
+
+                html.push_str(&format!("<tr><td><strong>{}</strong></td>", part_name));
+                html.push_str(&format!("<td><span class='badge bg-azure-lt text-azure-fg'>{}</span></td>", part_schema));
+                html.push_str(&format!("<td class='text-end'>{}</td>", part_rows));
+                html.push_str(&format!("<td class='text-end'>{}</td>", bytes_to_human(size_bytes)));
+                html.push_str(&format!("<td class='text-end'>{}</td>", idx_count));
+                html.push_str(&format!("<td><code class='text-muted small'>{}</code></td></tr>", bounds));
+            }
+
+            // Total row
+            html.push_str("<tr class='table-active'><td colspan='2'><strong>TOTAL</strong></td>");
+            html.push_str(&format!("<td class='text-end'><strong>{}</strong></td>", total_rows));
+            html.push_str(&format!("<td class='text-end'><strong>{}</strong></td>", bytes_to_human(total_size)));
+            html.push_str(&format!("<td class='text-end'><strong>{}</strong></td></tr>", total_indexes));
+            
+            html.push_str("</tbody></table></div>");
+            Html(html)
+        },
+        Err(_) => Html("<div class='alert alert-danger'>Failed to load partitions</div>".to_string()),
+    }
+}

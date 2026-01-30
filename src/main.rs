@@ -70,6 +70,10 @@ async fn main() -> Result<()> {
             get(handlers::table_detail::table_indexes),
         )
         .route(
+            "/tables/{schema}/{table}/partitions",
+            get(handlers::table_detail::table_partitions),
+        )
+        .route(
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),
         )

@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_tables %}active{% endblock %}
+{% block page_title %}Tables{% endblock %}
+{% block page_subtitle %}
+<div class="page-pretitle">
+    Total {{ total_count }} tables
+</div>
+{% endblock %}
+{% block content %}
+
+<!-- Filter -->
+<div class="row row-cards mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-end g-2">
+                    <div class="col-auto">
+                        <label class="form-label">Quick schema</label>
+                        <select class="form-select" id="schema-select" onchange="applySchemaFilter()">
+                            <option value="*">*</option>
+                            {% for s in schemas %}
+                            <option value="{{ s }}">{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label class="form-label">Tables filter - wildcard supports *, use OR (or ','), use AND NOT (or '-')</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="filter-input"
+                            name="filter"
+                            placeholder="např: public, user_*, *audit -test"
+                            value="{{ display_filter }}"
+                            oninput="handleFilterInput(this)">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label">Per page</label>
+                        <select
+                            class="form-select"
+                            name="per_page"
+                            id="per-page-select"
+                            onchange="applyPerPageChange()">
+                            <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                            <option value="250" {% if per_page == 250 %}selected{% endif %}>250</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden inputs pro sortování -->
+<input type="hidden" name="schema" value="{{ selected_schema }}">
+<input type="hidden" name="sort_by" value="{{ sort_by }}">
+<input type="hidden" name="sort_order" value="{{ sort_order }}">
+
+<!-- Tables table -->
+<div class="row row-cards">
+    <div class="col-12">
+        <div id="tables-table">
+            {{- initial_table_html|safe -}}
+                <div class="table-responsive">
+                    <table class="table table-vcenter card-table table-hover">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">#</th>
+                                <th class="sortable" data-sort="schema">
+                                    Schema
+                                    {% if sort_by == "schema" %}
+                                        {% if sort_order == "asc" %}
+                                            <i class="ti ti-chevron-up"></i>
+                                        {% else %}
+                                            <i class="ti ti-chevron-down"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </th>
+                                <th class="sortable" data-sort="name">
+                                    Table
+                                    {% if sort_by == "name" %}
+                                        {% if sort_order == "asc" %}
+                                            <i class="ti ti-chevron-up"></i>
+                                        {% else %}
+                                            <i class="ti ti-chevron-down"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </th>
+                                <th class="sortable text-end" data-sort="rows">
+                                    Rows
+                                    {% if sort_by == "rows" %}
+                                        {% if sort_order == "asc" %}
+                                            <i class="ti ti-chevron-up"></i>
+                                        {% else %}
+                                            <i class="ti ti-chevron-down"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </th>
+                                <th class="sortable text-end" data-sort="size">
+                                    Size
+                                    {% if sort_by == "size" %}
+                                        {% if sort_order == "asc" %}
+                                            <i class="ti ti-chevron-up"></i>
+                                        {% else %}
+                                            <i class="ti ti-chevron-down"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </th>
+                                <th class="sortable" data-sort="indexes">
+                                    Indexes
+                                    {% if sort_by == "indexes" %}
+                                        {% if sort_order == "asc" %}
+                                            <i class="ti ti-chevron-up"></i>
+                                        {% else %}
+                                            <i class="ti ti-chevron-down"></i>
+                                        {% endif %}
+                                    {% endif %}
+                                </th>
+                                <th class="w-1">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% if tables.len() == 0 %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    No tables match your filter
+                                </td>
+                            </tr>
+                        {% else %}
+                            {% for t in tables %}
+                            <tr>
+                                <td class="text-muted">{{ t.num }}</td>
+                                <td><span class="badge bg-azure-lt">{{ t.schema }}</span></td>
+                                <td>
+                                    <div>
+                                        <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.name }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.name }}/detail{% endif %}">
+                                            {{ t.name }}
+                                        </a>
+                                    </div>
+                                    {% if t.partitions.len() > 0 %}
+                                    <div class="text-muted small mt-1">
+                                        <i class="ti ti-layout-distribute-vertical"></i>
+                                        {{ t.partitions.len() }} partitions: {{ t.partitions|join(", ") }}
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end text-nowrap">{{ t.rows }}</td>
+                                <td class="text-end text-nowrap">{{ t.size }}</td>
+                                <td>{{ t.index_count }}</td>
+                                <td>
+                                    <div class="btn-list">
+                                        <button class="btn btn-sm btn-icon btn-ghost-primary"
+                                                data-schema="{{ t.schema }}"
+                                                data-name="{{ t.name }}"
+                                                onclick="openTableDetail(this)"
+                                                title="Quick detail">
+                                            <i class="ti ti-info-circle"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if filtered_count > 0 %}
+                <div class="card-footer d-flex align-items-center">
+                    <p class="m-0 text-muted">
+                        Showing {{ showing_start }} - {{ showing_end }} of {{ filtered_count }}
+                        {% if filtered_count != total_count %}
+                            ({{ total_count }} total)
+                        {% endif %}
+                    </p>
+                    {% if total_pages > 1 %}
+                    <ul class="pagination m-0 ms-auto">
+                        {% if page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="#"
+                               hx-get="{% if ctx.base_path == "/" %}/tables/{{ selected_schema }}/{{ filter }}/table{% else %}{{ ctx.base_path }}/tables/{{ selected_schema }}/{{ filter }}/table{% endif %}?page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                               hx-target="#tables-table"
+                               hx-swap="outerHTML">
+                                <i class="ti ti-chevron-left"></i> Prev
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link"><i class="ti ti-chevron-left"></i> Prev</span>
+                        </li>
+                        {% endif %}
+
+                        {% if page > 2 %}
+                        <li class="page-item">
+                            <a class="page-link" href="#"
+                               hx-get="{% if ctx.base_path == "/" %}/tables/{{ selected_schema }}/{{ filter }}/table{% else %}{{ ctx.base_path }}/tables/{{ selected_schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                               hx-target="#tables-table"
+                               hx-swap="outerHTML">
+                                1
+                            </a>
+                        </li>
+                        {% if page > 3 %}
+                        <li class="page-item disabled"><span class="page-link">…</span></li>
+                        {% endif %}
+                        {% endif %}
+
+                        {% if page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="#"
+                               hx-get="{% if ctx.base_path == "/" %}/tables/{{ selected_schema }}/{{ filter }}/table{% else %}{{ ctx.base_path }}/tables/{{ selected_schema }}/{{ filter }}/table{% endif %}?page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                               hx-target="#tables-table"
+                               hx-swap="outerHTML">
+                                {{ page - 1 }}
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        <li class="page-item active">
+                            <span class="page-link">{{ page }}</span>
+                        </li>
+
+                        {% if page < total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="#"
+                               hx-get="{% if ctx.base_path == "/" %}/tables/{{ selected_schema }}/{{ filter }}/table{% else %}{{ ctx.base_path }}/tables/{{ selected_schema }}/{{ filter }}/table{% endif %}?page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                               hx-target="#tables-table"
+                               hx-swap="outerHTML">
+                                {{ page + 1 }}
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% if page < total_pages - 1 %}
+                        {% if page < total_pages - 2 %}
+                        <li class="page-item disabled"><span class="page-link">…</span></li>
+                        {% endif %}
+                        <li class="page-item">
+                            <a class="page-link" href="#"
+                               hx-get="{% if ctx.base_path == "/" %}/tables/{{ selected_schema }}/{{ filter }}/table{% else %}{{ ctx.base_path }}/tables/{{ selected_schema }}/{{ filter }}/table{% endif %}?page={{ total_pages }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                               hx-target="#tables-table"
+                               hx-swap="outerHTML">
+                                {{ total_pages }}
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% if page < total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="#"
+                               hx-get="{% if ctx.base_path == "/" %}/tables/{{ selected_schema }}/{{ filter }}/table{% else %}{{ ctx.base_path }}/tables/{{ selected_schema }}/{{ filter }}/table{% endif %}?page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                               hx-target="#tables-table"
+                               hx-swap="outerHTML">
+                                Next <i class="ti ti-chevron-right"></i>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Next <i class="ti ti-chevron-right"></i></span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Table detail modal -->
+<div class="modal modal-blur fade" id="table-detail-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Table detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="table-detail-modal-content">
+                <div class="text-muted">Loading…</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Globální timer pro filter input
+if (typeof window.filterInputTimer === 'undefined') {
+    window.filterInputTimer = null;
+}
+
+// Handler pro filter input (volá se z oninput)
+window.handleFilterInput = function(input) {
+    clearTimeout(window.filterInputTimer);
+    window.filterInputTimer = setTimeout(() => {
+        const schema = document.getElementById('schema-select').value || '*';
+        const filter = (input.value || '*').trim() || '*';
+        const perPage = document.querySelector('[name="per_page"]').value;
+        const tablesCard = document.querySelector('#tables-table .card');
+        const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
+        const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
+        const base = window.__BASE_PATH__ || '';
+
+        // DEBUG
+        console.log('Calling HTMX with:', {schema, filter, perPage, sortBy, sortOrder});
+
+        htmx.ajax('GET', `${base}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(filter)}/table?page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`, {
+            target: '#tables-table',
+            swap: 'innerHTML'
+        }).then(() => {
+            console.log('HTMX swap completed, checking for #tables-table...');
+            console.log('Found elements:', document.querySelectorAll('#tables-table').length);
+        });
+    }, 400);
+};
+
+// Nastav selected schema
+(function() {
+    const selectedSchema = '{{ selected_schema }}';
+    const schemaSelect = document.getElementById('schema-select');
+    const schemaHidden = document.querySelector('[name="schema"]');
+    if (selectedSchema && schemaSelect) {
+        schemaSelect.value = selectedSchema;
+    }
+    if (schemaHidden) {
+        schemaHidden.value = selectedSchema || '*';
+    }
+})();
+
+// Spusť i po HTMX swap (když se vrátíš přes breadcrumb)
+document.addEventListener('htmx:afterSettle', function() {
+    const selectedSchema = '{{ selected_schema }}';
+    const schemaSelect = document.getElementById('schema-select');
+    const schemaHidden = document.querySelector('[name="schema"]');
+    if (selectedSchema && schemaSelect) {
+        schemaSelect.value = selectedSchema;
+    }
+    if (schemaHidden) {
+        schemaHidden.value = selectedSchema || '*';
+    }
+});
+
+// Per page change
+window.applyPerPageChange = function() {
+    const schema = document.getElementById('schema-select').value || '*';
+    const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
+    const perPage = document.getElementById('per-page-select').value;
+    const tablesCard = document.querySelector('#tables-table .card');
+    const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
+    const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
+    const base = window.__BASE_PATH__ || '';
+    htmx.ajax('GET', `${base}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(filter)}/table?page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`, {
+        target: '#tables-table',
+        swap: 'innerHTML'
+    });
+};
+
+// Quick schema filter
+window.applySchemaFilter = function() {
+    const schema = document.getElementById('schema-select').value;
+    const filterInput = document.getElementById('filter-input');
+    const perPage = document.querySelector('[name="per_page"]').value;
+    const schemaHidden = document.querySelector('[name="schema"]');
+    const tablesCard = document.querySelector('#tables-table .card');
+    const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
+    const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
+
+    if (schemaHidden) {
+        schemaHidden.value = schema || '*';
+    }
+    const actualFilter = (filterInput.value || '*').trim() || '*';
+
+    const base = window.__BASE_PATH__ || '';
+    htmx.ajax('GET', `${base}/tables/${encodeURIComponent(schema || '*')}/${encodeURIComponent(actualFilter)}/table?page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`, {
+        target: '#tables-table',
+        swap: 'innerHTML'
+    });
+};
+
+
+// Open table detail modal
+function openTableDetail(button) {
+    const schema = button.dataset.schema;
+    const name = button.dataset.name;
+    if (!schema || !name) return;
+
+    const base = window.__BASE_PATH__ || '';
+    const url = `${base}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(name)}/modal`;
+    fetch(url, { method: 'GET' })
+        .then(res => res.text())
+        .then(html => {
+            const target = document.getElementById('table-detail-modal-content');
+            if (target) {
+                target.innerHTML = html;
+            }
+            const modalElement = document.getElementById('table-detail-modal');
+            if (modalElement) {
+                const modal = new bootstrap.Modal(modalElement, {
+                    backdrop: true,
+                    keyboard: true,
+                    focus: true
+                });
+                modal.show();
+            }
+        })
+        .catch(err => {
+            const target = document.getElementById('table-detail-modal-content');
+            if (target) {
+                target.innerHTML = `<div class="text-danger">Failed to load detail: ${err}</div>`;
+            }
+        });
+}
+</script>
+{% endblock %}
+
+<script>
+// Tento script je MIMO content block, takže se nespouští opakovaně při HTMX swap
+</script>
