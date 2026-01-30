@@ -487,6 +487,16 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
   });
+
+  // Obnovit aktivní tab po reloadu
+  const activeTab = sessionStorage.getItem('activeTab');
+  if (activeTab) {
+    const tabTrigger = document.querySelector('[data-bs-toggle="tab"][href="' + activeTab + '"]');
+    if (tabTrigger) {
+      const tab = new bootstrap.Tab(tabTrigger);
+      tab.show();
+    }
+  }
 });
 
 // Lazy load tabs při kliknutí
@@ -498,6 +508,8 @@ let triggersLoaded = false;
 document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', function(e) {
     const target = e.target.getAttribute('href');
+    // Uložit aktivní tab do sessionStorage
+    sessionStorage.setItem('activeTab', target);
 
     if (target === '#tab-columns' && !columnsLoaded) {
       columnsLoaded = true;
