@@ -429,11 +429,22 @@ pub async fn table_partitions(
     match parts {
         Ok(rows) if rows.is_empty() => Html("<div class='text-center text-muted py-5'>No partitions found</div>".to_string()),
         Ok(rows) => {
-            let mut html = String::from("<div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Partition</th><th>Schema</th><th class='text-end'>Rows</th><th class='text-end'>Size</th><th class='text-end'>Indexes</th><th>Bounds</th></tr></thead><tbody>");
-            
             let mut total_rows: i64 = 0;
             let mut total_size: i64 = 0;
             let mut total_indexes: i64 = 0;
+
+            let mut chart_labels = Vec::new();
+            let mut chart_data = Vec::new();
+
+            // Nejdřív projdi data pro chart
+            for row in &rows {
+                let part_name: String = row.get("partition_name");
+                let size_bytes: i64 = row.get("size_bytes");
+                chart_labels.push(part_name);
+                chart_data.push(size_bytes);
+            }
+
+            let mut html = String::from("<div class='row'><div class='col-md-4'><canvas id='partition-chart' style='max-height: 300px;'></canvas></div><div class='col-md-8'><div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Partition</th><th>Schema</th><th class='text-end'>Rows</th><th class='text-end'>Size</th><th class='text-end'>Indexes</th><th>Bounds</th></tr></thead><tbody>");
 
             for row in rows {
                 let part_name: String = row.get("partition_name");
@@ -460,8 +471,19 @@ pub async fn table_partitions(
             html.push_str(&format!("<td class='text-end'><strong>{}</strong></td>", total_rows));
             html.push_str(&format!("<td class='text-end'><strong>{}</strong></td>", bytes_to_human(total_size)));
             html.push_str(&format!("<td class='text-end'><strong>{}</strong></td></tr>", total_indexes));
-            
-            html.push_str("</tbody></table></div>");
+
+            html.push_str("</tbody></table></div></div></div>");
+
+            // Přidej data jako JSON do data atributů
+            let labels_json: Vec<String> = chart_labels.iter().map(|s| format!("\"{}\"", s.replace('"', "\\\""))).collect();
+            let data_json: Vec<String> = chart_data.iter().map(|n| n.to_string()).collect();
+
+            html.push_str(&format!(
+                "<script type='application/json' id='partition-chart-data'>{{\"labels\":[{}],\"data\":[{}]}}</script>",
+                labels_json.join(","),
+                data_json.join(",")
+            ));
+
             Html(html)
         },
         Err(_) => Html("<div class='alert alert-danger'>Failed to load partitions</div>".to_string()),

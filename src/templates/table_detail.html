@@ -224,6 +224,43 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
         .then(r => r.text())
         .then(html => {
           document.getElementById('tab-partitions').innerHTML = html;
+          // Init chart po načtení dat
+          const dataScript = document.getElementById('partition-chart-data');
+          if (dataScript && window.Chart) {
+            const data = JSON.parse(dataScript.textContent);
+            const ctx = document.getElementById('partition-chart');
+            if (ctx) {
+              new Chart(ctx, {
+                type: 'pie',
+                data: {
+                  labels: data.labels,
+                  datasets: [{
+                    data: data.data,
+                    backgroundColor: ['#206bc4','#4299e1','#79c0ff','#a4cafe','#d4e4ff','#f0b429','#fab005','#fd7e14','#d63939','#ae3ec9']
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: true,
+                  plugins: {
+                    legend: {position: 'bottom'},
+                    tooltip: {
+                      callbacks: {
+                        label: function(ctx) {
+                          const bytes = ctx.parsed;
+                          const units = ['B','KB','MB','GB','TB'];
+                          let i = 0;
+                          let size = bytes;
+                          while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+                          return ctx.label + ': ' + size.toFixed(2) + ' ' + units[i];
+                        }
+                      }
+                    }
+                  }
+                }
+              });
+            }
+          }
         });
     }
   });
