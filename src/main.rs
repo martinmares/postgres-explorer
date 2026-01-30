@@ -33,22 +33,80 @@ struct Args {
     /// Base path when running behind reverse proxy (e.g. /postgres-explorer)
     #[arg(long, default_value = "/")]
     base_path: String,
+
+    /// Stateless mode: no local storage, use single connection from CLI/.env
+    #[arg(long, default_value_t = false)]
+    stateless: bool,
+
+    /// Connection name (shown in UI)
+    #[arg(long, env = "CONF_NAME")]
+    conf_name: Option<String>,
+
+    /// Postgres URL (e.g. postgres://host:5432/db)
+    #[arg(long, env = "CONF_DB_URL")]
+    conf_db_url: Option<String>,
+
+    /// Postgres username
+    #[arg(long, env = "CONF_DB_USERNAME")]
+    conf_db_username: Option<String>,
+
+    /// Postgres password
+    #[arg(long, env = "CONF_DB_PASSWORD")]
+    conf_db_password: Option<String>,
+
+    /// SSL mode (e.g. require, disable)
+    #[arg(long, env = "CONF_DB_SSL_MODE")]
+    conf_db_ssl_mode: Option<String>,
+
+    /// Allow insecure TLS
+    #[arg(long, env = "CONF_DB_INSECURE", default_value_t = false)]
+    conf_db_insecure: bool,
+
+    /// Search path override (comma-separated)
+    #[arg(long, env = "CONF_DB_SEARCH_PATH")]
+    conf_db_search_path: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let _ = dotenvy::dotenv();
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
     let args = Args::parse();
 
-    config::init_directories()?;
-    let db = db::Database::new().await?;
+    let db = if args.stateless {
+        None
+    } else {
+        config::init_directories()?;
+        Some(db::Database::new().await?)
+    };
     let base_path = normalize_base_path(&args.base_path);
+    let stateless_endpoint = if args.stateless {
+        let url = args.conf_db_url.clone().ok_or_else(|| anyhow::anyhow!("--conf-db-url is required in --stateless mode"))?;
+        let name = args.conf_name.clone().unwrap_or_else(|| url.clone());
+        Some(db::models::Endpoint {
+            id: 0,
+            name,
+            url,
+            insecure: args.conf_db_insecure,
+            username: args.conf_db_username.clone(),
+            password_encrypted: None,
+            ssl_mode: args.conf_db_ssl_mode.clone(),
+            search_path: args.conf_db_search_path.clone(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        })
+    } else {
+        None
+    };
+
     let state = Arc::new(handlers::AppState {
         db,
         base_path: base_path.clone(),
+        stateless_endpoint,
+        stateless_password: if args.stateless { args.conf_db_password.clone() } else { None },
         schemas_cache: Arc::new(RwLock::new(HashMap::new())),
         tables_cache: Arc::new(RwLock::new(HashMap::new())),
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
