@@ -2,6 +2,7 @@ pub mod console;
 pub mod dashboard;
 pub mod endpoints;
 pub mod indices;
+pub mod maintenance;
 pub mod schemas;
 pub mod table_detail;
 pub mod tables;

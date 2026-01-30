@@ -338,6 +338,16 @@ pub async fn table_indexes(
         Err(_) => return Html("<div class='text-muted'>Connection failed</div>".to_string()),
     };
 
+    // Nejdřív získej počet řádků v tabulce pro bloat detection
+    let table_rows = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(NULLIF(s.n_live_tup, 0), NULLIF(c.reltuples, 0), 0)::bigint FROM pg_class c LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2"
+    )
+    .bind(&schema)
+    .bind(&name)
+    .fetch_one(&pg)
+    .await
+    .unwrap_or(0);
+
     let idxs = sqlx::query(
         r#"
         SELECT
@@ -369,7 +379,9 @@ pub async fn table_indexes(
     match idxs {
         Ok(rows) if rows.is_empty() => Html("<div class='text-center text-muted py-5'>No indexes found</div>".to_string()),
         Ok(rows) => {
-            let mut html = String::from("<div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Name</th><th>Columns</th><th>Type</th><th class='text-end'>Size</th><th class='text-end'>Scans</th><th>Attributes</th><th>Actions</th></tr></thead><tbody>");
+            let mut html = String::from("<div class='alert alert-info mb-3'><i class='ti ti-info-circle me-2'></i>Use REINDEX to rebuild bloated indexes. This operation locks the table.</div>");
+            html.push_str("<div class='mb-3'><button class='btn btn-sm btn-warning' onclick='reindexAllIndexes()'><i class='ti ti-refresh me-1'></i>REINDEX All Indexes</button></div>");
+            html.push_str("<div class='table-responsive'><table class='table table-vcenter'><thead><tr><th>Name</th><th>Columns</th><th>Type</th><th class='text-end'>Size</th><th class='text-end'>Scans</th><th>Attributes</th><th>Actions</th></tr></thead><tbody>");
             
             for row in rows {
                 let idx_name: String = row.get("index_name");
@@ -380,11 +392,22 @@ pub async fn table_indexes(
                 let is_primary: bool = row.get("is_primary");
                 let definition: String = row.get("definition");
                 let scans: i64 = row.get("scans");
-                
+
+                // Bloat detection: pokud má index > 10 MB a více než 100 KB na řádek, je nafouklý
+                let is_bloated = if table_rows > 0 {
+                    size_bytes > 10 * 1024 * 1024 && (size_bytes / table_rows.max(1)) > 100 * 1024
+                } else {
+                    size_bytes > 100 * 1024 * 1024 // Pokud není žádný řádek a index je > 100 MB
+                };
+
                 html.push_str(&format!("<tr><td><strong>{}</strong></td>", idx_name));
                 html.push_str(&format!("<td><code class='text-muted'>{}</code></td>", columns));
                 html.push_str(&format!("<td><span class='badge bg-gray-lt text-gray-fg'>{}</span></td>", idx_type));
-                html.push_str(&format!("<td class='text-end'>{}</td>", bytes_to_human(size_bytes)));
+                html.push_str("<td class='text-end'>");
+                if is_bloated {
+                    html.push_str("<span class='badge bg-orange-lt text-orange-fg me-2' title='Index is bloated. Consider REINDEX.'><i class='ti ti-alert-triangle'></i> bloated</span>");
+                }
+                html.push_str(&format!("{}</td>", bytes_to_human(size_bytes)));
                 html.push_str(&format!("<td class='text-end'>{}</td>", scans));
                 
                 html.push_str("<td>");
@@ -395,9 +418,13 @@ pub async fn table_indexes(
                     html.push_str("<span class='badge bg-cyan text-cyan-fg me-1'><i class='ti ti-check'></i> UNIQUE</span>");
                 }
                 html.push_str("</td>");
-                
+
                 let def_escaped = definition.replace('`', "\\`").replace('\'', "\\'");
-                html.push_str(&format!("<td><button class='btn btn-sm btn-ghost-secondary' onclick='showIndexDDL(\"{}\", `{}`)' title='Show DDL'><i class='ti ti-code'></i></button></td></tr>", idx_name, def_escaped));
+                let idx_name_escaped = idx_name.replace('\'', "\\'");
+                html.push_str("<td>");
+                html.push_str(&format!("<button class='btn btn-sm btn-ghost-secondary me-1' onclick='showIndexDDL(\"{}\", `{}`)' title='Show DDL'><i class='ti ti-code'></i></button>", idx_name, def_escaped));
+                html.push_str(&format!("<button class='btn btn-sm btn-warning' onclick='reindexSingle(\"{}\", \"{}\")' title='REINDEX this index'><i class='ti ti-refresh'></i></button>", schema, idx_name_escaped));
+                html.push_str("</td></tr>");
             }
             
             html.push_str("</tbody></table></div>");

@@ -78,6 +78,11 @@ async fn main() -> Result<()> {
             "/tables/{schema}/{table}/triggers",
             get(handlers::table_detail::table_triggers),
         )
+        .route("/reindex/{schema}/{index}", axum::routing::post(handlers::maintenance::reindex_index))
+        .route("/reindex/{schema}/{table}", axum::routing::post(handlers::maintenance::reindex_table))
+        .route("/maintenance/vacuum/{schema}/{table}", axum::routing::post(handlers::maintenance::vacuum_table))
+        .route("/maintenance/vacuum-full/{schema}/{table}", axum::routing::post(handlers::maintenance::vacuum_full_table))
+        .route("/maintenance/analyze/{schema}/{table}", axum::routing::post(handlers::maintenance::analyze_table))
         .route(
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),

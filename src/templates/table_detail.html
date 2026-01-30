@@ -144,6 +144,30 @@
             </div>
           </div>
           {% endif %}
+
+          <div class="col-12">
+            <div class="card">
+              <div class="card-body">
+                <div class="text-muted small mb-2">Maintenance Operations</div>
+                <div class="btn-list">
+                  <button class="btn btn-primary" onclick="runVacuum('{{ schema }}', '{{ name }}')">
+                    <i class="ti ti-trash me-1"></i>VACUUM
+                  </button>
+                  <button class="btn btn-warning" onclick="runVacuumFull('{{ schema }}', '{{ name }}')">
+                    <i class="ti ti-trash-x me-1"></i>VACUUM FULL
+                  </button>
+                  <button class="btn btn-info" onclick="runAnalyzeTable('{{ schema }}', '{{ name }}')">
+                    <i class="ti ti-chart-bar me-1"></i>ANALYZE
+                  </button>
+                </div>
+                <div class="text-muted small mt-2">
+                  <strong>VACUUM:</strong> Reclaims dead tuple space (non-blocking)<br>
+                  <strong>VACUUM FULL:</strong> Completely rebuilds table (locks table, reclaims all bloat)<br>
+                  <strong>ANALYZE:</strong> Updates statistics for query planner
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -315,6 +339,103 @@ function showTriggerDDL(name, ddl) {
   document.getElementById('trigger-ddl-title').textContent = 'Trigger: ' + name;
   document.getElementById('trigger-ddl-content').textContent = ddl;
   new bootstrap.Modal(document.getElementById('trigger-ddl-modal')).show();
+}
+
+function reindexSingle(schema, indexName) {
+  if (!confirm('REINDEX will lock the table. Continue?')) return;
+
+  const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+  const btn = event.target.closest('button');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+  fetch(basePath + '/reindex/' + encodeURIComponent(schema) + '/' + encodeURIComponent(indexName), { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        alert('REINDEX completed successfully!');
+        location.reload();
+      } else {
+        alert('REINDEX failed: ' + (data.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    })
+    .catch(err => {
+      alert('Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    });
+}
+
+function reindexAllIndexes() {
+  if (!confirm('REINDEX all indexes will lock the table for the duration. This may take several minutes. Continue?')) return;
+
+  const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+  const btn = event.target;
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+
+  fetch(basePath + '/reindex/{{ schema }}/{{ name }}', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        alert('REINDEX TABLE completed successfully!');
+        location.reload();
+      } else {
+        alert('REINDEX failed: ' + (data.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    })
+    .catch(err => {
+      alert('Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    });
+}
+
+function runVacuum(schema, table) {
+  if (!confirm('Run VACUUM on ' + schema + '.' + table + '? This is non-blocking but may take time.')) return;
+  runMaintenanceOp('vacuum', schema, table);
+}
+
+function runVacuumFull(schema, table) {
+  if (!confirm('⚠️ WARNING: VACUUM FULL will lock the entire table!\n\nThis operation:\n- Completely rebuilds the table\n- Reclaims all bloat\n- Can take a LONG time on large tables\n- BLOCKS all reads and writes\n\nContinue?')) return;
+  runMaintenanceOp('vacuum-full', schema, table);
+}
+
+function runAnalyzeTable(schema, table) {
+  if (!confirm('Run ANALYZE on ' + schema + '.' + table + '?')) return;
+  runMaintenanceOp('analyze', schema, table);
+}
+
+function runMaintenanceOp(operation, schema, table) {
+  const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+  const btn = event.target.closest('button');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+
+  fetch(basePath + '/maintenance/' + operation + '/' + encodeURIComponent(schema) + '/' + encodeURIComponent(table), { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        alert(operation.toUpperCase() + ' completed successfully!');
+        location.reload();
+      } else {
+        alert(operation.toUpperCase() + ' failed: ' + (data.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    })
+    .catch(err => {
+      alert('Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    });
 }
 </script>
 
