@@ -67,7 +67,13 @@ pub async fn list_schemas(
         Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
             r#"
             SELECT n.nspname as name,
-                   (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r') as table_count,
+                   (
+                       SELECT count(DISTINCT COALESCE(parent.oid, c.oid))
+                       FROM pg_class c
+                       LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
+                       LEFT JOIN pg_class parent ON parent.oid = i.inhparent
+                       WHERE c.relnamespace = n.oid AND c.relkind IN ('r','p')
+                   ) as table_count,
                    (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'i') as index_count,
                    COALESCE((SELECT SUM(pg_total_relation_size(c.oid))::bigint FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r'), 0) as total_size
             FROM pg_namespace n
@@ -201,7 +207,13 @@ pub async fn schemas_table(
         Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
             r#"
             SELECT n.nspname as name,
-                   (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r') as table_count,
+                   (
+                       SELECT count(DISTINCT COALESCE(parent.oid, c.oid))
+                       FROM pg_class c
+                       LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
+                       LEFT JOIN pg_class parent ON parent.oid = i.inhparent
+                       WHERE c.relnamespace = n.oid AND c.relkind IN ('r','p')
+                   ) as table_count,
                    (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'i') as index_count,
                    COALESCE((SELECT SUM(pg_total_relation_size(c.oid))::bigint FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r'), 0) as total_size
             FROM pg_namespace n
