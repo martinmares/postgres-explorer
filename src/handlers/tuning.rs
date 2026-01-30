@@ -45,6 +45,15 @@ pub struct FragmentedIndex {
     pub bloat_pct: f64,
 }
 
+#[derive(Debug, Clone)]
+pub struct HealthIssue {
+    pub title: String,
+    pub description: String,
+    pub severity: String,
+    pub count: i64,
+    pub action_href: String,
+}
+
 pub async fn tuning_page(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -61,6 +70,8 @@ pub async fn tuning_page(
     let mut fragmented_tables = Vec::new();
     let mut fragmented_indexes = Vec::new();
     let mut pg_stat_statements_enabled = false;
+    let mut health_issues: Vec<HealthIssue> = Vec::new();
+    let mut health_score: i64 = 100;
 
     match connect_pg(&state, &active).await {
         Ok(pg) => {
@@ -218,6 +229,77 @@ pub async fn tuning_page(
     }
 
     let ctx = build_ctx_with_endpoint(&state, Some(&active));
+    let base = if ctx.base_path == "/" { "".to_string() } else { ctx.base_path.clone() };
+
+    let full_scan_count = full_scan_queries.len() as i64;
+    let over_indexed_count = over_indexed_tables.len() as i64;
+    let fragmented_tables_count = fragmented_tables.len() as i64;
+    let fragmented_indexes_count = fragmented_indexes.len() as i64;
+
+    if !pg_stat_statements_enabled {
+        health_issues.push(HealthIssue {
+            title: "pg_stat_statements disabled".to_string(),
+            description: "Query insights are limited without pg_stat_statements.".to_string(),
+            severity: "warning".to_string(),
+            count: 1,
+            action_href: "#full-scans".to_string(),
+        });
+        health_score = (health_score - 10).max(0);
+    }
+
+    if full_scan_count > 0 {
+        health_issues.push(HealthIssue {
+            title: "Potential full table scans".to_string(),
+            description: "High cost queries without WHERE clause detected.".to_string(),
+            severity: "danger".to_string(),
+            count: full_scan_count,
+            action_href: "#full-scans".to_string(),
+        });
+        health_score = (health_score - (full_scan_count * 2).min(30)).max(0);
+    }
+
+    if fragmented_tables_count > 0 {
+        health_issues.push(HealthIssue {
+            title: "Fragmented tables".to_string(),
+            description: "Tables with high dead tuple ratio.".to_string(),
+            severity: "danger".to_string(),
+            count: fragmented_tables_count,
+            action_href: "#fragmented-tables".to_string(),
+        });
+        health_score = (health_score - (fragmented_tables_count * 2).min(25)).max(0);
+    }
+
+    if over_indexed_count > 0 {
+        health_issues.push(HealthIssue {
+            title: "Over-indexed tables".to_string(),
+            description: "Tables with excessive index counts.".to_string(),
+            severity: "warning".to_string(),
+            count: over_indexed_count,
+            action_href: "#over-indexed".to_string(),
+        });
+        health_score = (health_score - over_indexed_count.min(25)).max(0);
+    }
+
+    if fragmented_indexes_count > 0 {
+        health_issues.push(HealthIssue {
+            title: "Potentially fragmented indexes".to_string(),
+            description: "Large indexes with low usage.".to_string(),
+            severity: "warning".to_string(),
+            count: fragmented_indexes_count,
+            action_href: "#fragmented-indexes".to_string(),
+        });
+        health_score = (health_score - fragmented_indexes_count.min(20)).max(0);
+    }
+
+    health_issues.sort_by(|a, b| {
+        let rank = |s: &str| if s == "danger" { 2 } else if s == "warning" { 1 } else { 0 };
+        rank(&b.severity)
+            .cmp(&rank(&a.severity))
+            .then_with(|| b.count.cmp(&a.count))
+    });
+
+    let health_summary = health_issues.iter().take(3).cloned().collect::<Vec<_>>();
+
     let tmpl = TuningTemplate {
         ctx,
         pg_stat_statements_enabled,
@@ -225,6 +307,9 @@ pub async fn tuning_page(
         over_indexed_tables,
         fragmented_tables,
         fragmented_indexes,
+        health_score,
+        health_summary,
+        base_path: base,
     };
 
     match tmpl.render() {
