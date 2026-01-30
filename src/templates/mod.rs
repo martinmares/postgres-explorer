@@ -79,6 +79,11 @@ pub struct TableDetailTemplate {
     pub vacuum_hint: String,
     pub index_count: String,
     pub authorized: bool,
+    pub owner: String,
+    pub table_type: String,
+    pub last_vacuum: String,
+    pub last_analyze: String,
+    pub comment: String,
 }
 
 #[derive(Template)]
