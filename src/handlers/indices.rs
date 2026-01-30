@@ -164,6 +164,7 @@ pub async fn list_indices(
     jar: CookieJar,
     Query(query): Query<IndicesQuery>,
 ) -> Result<Response, (axum::http::StatusCode, String)> {
+    let overall_start = Instant::now();
     let active = get_active_endpoint(&state, &jar).await;
     if active.is_none() {
         let target = base_path_url(&state, "/endpoints");
@@ -171,7 +172,9 @@ pub async fn list_indices(
     }
     let active = active.unwrap();
 
+    let cache_start = Instant::now();
     let (index_rows, is_fetching) = get_cached_indices(&state, &active).await;
+    let cache_ms = cache_start.elapsed().as_millis();
     let mut indices: Vec<IndexRow> = index_rows
         .into_iter()
         .map(|r| {
@@ -194,16 +197,22 @@ pub async fn list_indices(
         })
         .collect();
 
+    let schema_list_start = Instant::now();
     // Build schema list
     let mut schemas: Vec<String> = indices.iter().map(|i| i.schema.clone()).collect();
     schemas.sort();
     schemas.dedup();
+    let schema_list_ms = schema_list_start.elapsed().as_millis();
+    let schemas_json = serde_json::to_string(&schemas).unwrap_or_else(|_| "[]".to_string());
 
     // Apply schema/table filters
+    let schema_filter_start = Instant::now();
     if query.schema != "*" {
         indices.retain(|i| i.schema == query.schema);
     }
+    let schema_filter_ms = schema_filter_start.elapsed().as_millis();
 
+    let table_list_start = Instant::now();
     let mut tables: Vec<String> = if query.schema != "*" {
         indices.iter().map(|i| i.table.clone()).collect()
     } else {
@@ -211,23 +220,33 @@ pub async fn list_indices(
     };
     tables.sort();
     tables.dedup();
+    let table_list_ms = table_list_start.elapsed().as_millis();
 
+    let table_filter_start = Instant::now();
     if query.table != "*" {
         indices.retain(|i| i.table == query.table);
     }
+    let table_filter_ms = table_filter_start.elapsed().as_millis();
 
     // Apply name filter
+    let filter_start = Instant::now();
     let total_count = indices.len();
-    let (includes, excludes) = parse_pattern_expression(&query.filter);
-    indices.retain(|i| {
-        let matches_include = includes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-        if !matches_include { return false; }
-        let matches_exclude = excludes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-        !matches_exclude
-    });
+    if query.filter != "*" && !query.filter.trim().is_empty() {
+        let (includes, excludes) = parse_pattern_expression(&query.filter);
+        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
+            indices.retain(|i| {
+                let matches_include = includes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
+                if !matches_include { return false; }
+                let matches_exclude = excludes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
+                !matches_exclude
+            });
+        }
+    }
+    let filter_ms = filter_start.elapsed().as_millis();
     let filtered_count = indices.len();
 
     // Sorting
+    let sort_start = Instant::now();
     match query.sort_by.as_str() {
         "schema" => indices.sort_by(|a,b| if query.sort_order == "asc" { a.schema.cmp(&b.schema) } else { b.schema.cmp(&a.schema) }),
         "table" => indices.sort_by(|a,b| if query.sort_order == "asc" { a.table.cmp(&b.table) } else { b.table.cmp(&a.table) }),
@@ -236,15 +255,19 @@ pub async fn list_indices(
         "size" => indices.sort_by(|a,b| if query.sort_order == "asc" { a.size_bytes.cmp(&b.size_bytes) } else { b.size_bytes.cmp(&a.size_bytes) }),
         _ => {}
     }
+    let sort_ms = sort_start.elapsed().as_millis();
 
     // Pagination
+    let page_start = Instant::now();
     let page = if query.page == 0 { 1 } else { query.page };
     let per_page = query.per_page;
     let total_pages = (filtered_count as f64 / per_page as f64).ceil() as usize;
     let start = (page - 1) * per_page;
     let end = std::cmp::min(start + per_page, filtered_count);
     let paginated = indices.into_iter().skip(start).take(per_page).collect::<Vec<_>>();
+    let page_ms = page_start.elapsed().as_millis();
 
+    let render_start = Instant::now();
     let table_tpl = IndicesTableTemplate {
         indices: paginated.clone(),
         base_path: state.base_path.clone(),
@@ -261,8 +284,10 @@ pub async fn list_indices(
         schema: query.schema.clone(),
         table: query.table.clone(),
         is_fetching,
+        schemas_json: schemas_json.clone(),
     };
     let initial_table_html = table_tpl.render().unwrap_or_else(|_| "<div>Error rendering table</div>".to_string());
+    let render_ms = render_start.elapsed().as_millis();
 
     let selected_table = if query.schema == "*" {
         "*".to_string()
@@ -292,6 +317,23 @@ pub async fn list_indices(
         showing_end: end,
         initial_table_html,
     };
+    let overall_ms = overall_start.elapsed().as_millis();
+    tracing::debug!(
+        schema = %query.schema,
+        table = %query.table,
+        filter = %query.filter,
+        cache_ms,
+        schema_list_ms,
+        schema_filter_ms,
+        table_list_ms,
+        table_filter_ms,
+        filter_ms,
+        sort_ms,
+        page_ms,
+        render_ms,
+        overall_ms,
+        "indices timings"
+    );
 
     tpl.render()
         .map(Html)
@@ -304,13 +346,16 @@ pub async fn indices_table(
     jar: CookieJar,
     Query(query): Query<IndicesQuery>,
 ) -> Result<Response, (axum::http::StatusCode, String)> {
+    let overall_start = Instant::now();
     let active = get_active_endpoint(&state, &jar).await;
     if active.is_none() {
         return Err((axum::http::StatusCode::BAD_REQUEST, "No active endpoint".to_string()));
     }
     let active = active.unwrap();
 
+    let cache_start = Instant::now();
     let (index_rows, is_fetching) = get_cached_indices(&state, &active).await;
+    let cache_ms = cache_start.elapsed().as_millis();
     let mut indices: Vec<IndexRow> = index_rows
         .into_iter()
         .map(|r| {
@@ -333,23 +378,42 @@ pub async fn indices_table(
         })
         .collect();
 
+    let schema_list_start = Instant::now();
+    let mut schemas: Vec<String> = indices.iter().map(|i| i.schema.clone()).collect();
+    schemas.sort();
+    schemas.dedup();
+    let schema_list_ms = schema_list_start.elapsed().as_millis();
+    let schemas_json = serde_json::to_string(&schemas).unwrap_or_else(|_| "[]".to_string());
+
+    let schema_filter_start = Instant::now();
     if query.schema != "*" {
         indices.retain(|i| i.schema == query.schema);
     }
+    let schema_filter_ms = schema_filter_start.elapsed().as_millis();
+
+    let table_filter_start = Instant::now();
     if query.table != "*" {
         indices.retain(|i| i.table == query.table);
     }
+    let table_filter_ms = table_filter_start.elapsed().as_millis();
 
     let total_count = indices.len();
-    let (includes, excludes) = parse_pattern_expression(&query.filter);
-    indices.retain(|i| {
-        let matches_include = includes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-        if !matches_include { return false; }
-        let matches_exclude = excludes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-        !matches_exclude
-    });
+    let filter_start = Instant::now();
+    if query.filter != "*" && !query.filter.trim().is_empty() {
+        let (includes, excludes) = parse_pattern_expression(&query.filter);
+        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
+            indices.retain(|i| {
+                let matches_include = includes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
+                if !matches_include { return false; }
+                let matches_exclude = excludes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
+                !matches_exclude
+            });
+        }
+    }
+    let filter_ms = filter_start.elapsed().as_millis();
     let filtered_count = indices.len();
 
+    let sort_start = Instant::now();
     match query.sort_by.as_str() {
         "schema" => indices.sort_by(|a,b| if query.sort_order == "asc" { a.schema.cmp(&b.schema) } else { b.schema.cmp(&a.schema) }),
         "table" => indices.sort_by(|a,b| if query.sort_order == "asc" { a.table.cmp(&b.table) } else { b.table.cmp(&a.table) }),
@@ -358,14 +422,18 @@ pub async fn indices_table(
         "size" => indices.sort_by(|a,b| if query.sort_order == "asc" { a.size_bytes.cmp(&b.size_bytes) } else { b.size_bytes.cmp(&a.size_bytes) }),
         _ => {}
     }
+    let sort_ms = sort_start.elapsed().as_millis();
 
+    let page_start = Instant::now();
     let page = if query.page == 0 { 1 } else { query.page };
     let per_page = query.per_page;
     let total_pages = (filtered_count as f64 / per_page as f64).ceil() as usize;
     let start = (page - 1) * per_page;
     let end = std::cmp::min(start + per_page, filtered_count);
     let paginated = indices.into_iter().skip(start).take(per_page).collect::<Vec<_>>();
+    let page_ms = page_start.elapsed().as_millis();
 
+    let render_start = Instant::now();
     let tpl = IndicesTableTemplate {
         indices: paginated,
         base_path: state.base_path.clone(),
@@ -382,7 +450,25 @@ pub async fn indices_table(
         showing_start: if filtered_count == 0 { 0 } else { start + 1 },
         showing_end: end,
         is_fetching,
+        schemas_json,
     };
+    let render_ms = render_start.elapsed().as_millis();
+    let overall_ms = overall_start.elapsed().as_millis();
+    tracing::debug!(
+        schema = %query.schema,
+        table = %query.table,
+        filter = %query.filter,
+        cache_ms,
+        schema_list_ms,
+        schema_filter_ms,
+        table_filter_ms,
+        filter_ms,
+        sort_ms,
+        page_ms,
+        render_ms,
+        overall_ms,
+        "indices_table timings"
+    );
 
     tpl.render()
         .map(Html)

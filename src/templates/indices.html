@@ -126,6 +126,25 @@ function loadIndices(url) {
       if (target.querySelector('[data-fetching="true"]')) {
         setTimeout(() => loadIndices(url), 1000);
       }
+      const schemaScript = target.querySelector('#indices-schemas-json');
+      const schemaSelect = document.getElementById('schema-select');
+      if (schemaScript && schemaSelect) {
+        try {
+          const schemas = JSON.parse(schemaScript.textContent || '[]');
+          if (Array.isArray(schemas) && schemas.length > 0) {
+            if (schemaSelect.options.length <= 1) {
+              schemas.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                schemaSelect.appendChild(opt);
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to parse indices schemas json', e);
+        }
+      }
     })
     .catch(err => { target.innerHTML = `<div class="text-danger">Failed to load indices: ${err}</div>`; });
 }

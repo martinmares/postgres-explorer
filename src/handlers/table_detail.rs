@@ -1025,16 +1025,18 @@ pub async fn table_relationships(
     let mut html = String::new();
     html.push_str("<div class='row'>");
     html.push_str("<div class='col-12 mb-4'>");
-    html.push_str("<div class='card'><div class='card-body text-center'>");
-    html.push_str("<pre class='mermaid' style='background: transparent; border: none; text-align: center;'>");
+    html.push_str("<div class='card'><div class='card-body'>");
+    html.push_str("<div class='mermaid-wrap' style='max-height: 520px; overflow: auto;'>");
+    html.push_str("<pre class='mermaid' style='background: transparent; border: none; text-align: left; min-width: 720px;'>");
     html.push_str(&mermaid);
     html.push_str("</pre>");
+    html.push_str("</div>");
     html.push_str("</div></div>");
     html.push_str("</div>");
 
     // Outgoing relationships table
     if !outgoing.is_empty() {
-        html.push_str("<div class='col-md-6'>");
+        html.push_str("<div class='col-12 mb-4'>");
         html.push_str("<h3 class='mb-3'><i class='ti ti-arrow-right me-2'></i>References (Outgoing FK)</h3>");
         html.push_str("<div class='table-responsive'><table class='table table-vcenter card'><thead><tr><th>Constraint</th><th>Foreign Table</th><th>Columns</th></tr></thead><tbody>");
 
@@ -1059,7 +1061,7 @@ pub async fn table_relationships(
 
     // Incoming relationships table
     if !incoming.is_empty() {
-        html.push_str("<div class='col-md-6'>");
+        html.push_str("<div class='col-12 mb-4'>");
         html.push_str("<h3 class='mb-3'><i class='ti ti-arrow-left me-2'></i>Referenced by (Incoming FK)</h3>");
         html.push_str("<div class='table-responsive'><table class='table table-vcenter card'><thead><tr><th>Constraint</th><th>Referencing Table</th><th>Columns</th></tr></thead><tbody>");
 

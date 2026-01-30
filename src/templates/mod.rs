@@ -176,6 +176,7 @@ pub struct IndicesTableTemplate {
     pub showing_start: usize,
     pub showing_end: usize,
     pub is_fetching: bool,
+    pub schemas_json: String,
 }
 
 #[derive(Template)]

@@ -1,4 +1,5 @@
 <div class="card" data-sort-by="{{ sort_by }}" data-sort-order="{{ sort_order }}" data-fetching="{% if is_fetching %}true{% else %}false{% endif %}">
+  <script type="application/json" id="indices-schemas-json">{{ schemas_json|safe }}</script>
   {% if is_fetching %}
   <div class="card-alert alert alert-info">
     <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
@@ -42,8 +43,12 @@
       {% else %}
         {% for idx in indices %}
         <tr>
-          <td>{{ idx.schema }}</td>
-          <td>{{ idx.table }}</td>
+          <td>
+            <a href="{% if base_path == "/" %}/tables/{{ idx.schema }}/*{% else %}{{ base_path }}/tables/{{ idx.schema }}/*{% endif %}">{{ idx.schema }}</a>
+          </td>
+          <td>
+            <a href="{% if base_path == "/" %}/tables/{{ idx.schema }}/{{ idx.table }}/detail{% else %}{{ base_path }}/tables/{{ idx.schema }}/{{ idx.table }}/detail{% endif %}" hx-boost="false">{{ idx.table }}</a>
+          </td>
           <td><code>{{ idx.name }}</code></td>
           <td class="text-end text-nowrap">{{ idx.size }}</td>
           <td class="text-end text-nowrap">{{ idx.scans }}</td>
