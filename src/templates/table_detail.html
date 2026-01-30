@@ -629,7 +629,16 @@ document.getElementById('reindex-single-confirm').addEventListener('click', func
       if (data.success) {
         resultDiv.innerHTML = '<div class="alert alert-success"><i class="ti ti-check me-2"></i>REINDEX completed successfully!</div>';
         resultDiv.style.display = 'block';
-        setTimeout(() => location.reload(), 1500);
+        setTimeout(() => {
+          // Zavřít modal
+          bootstrap.Modal.getInstance(document.getElementById('reindex-single-modal')).hide();
+          // Reload indexes tab (jsme v něm, jinak bychom tu tlačítko neviděli)
+          indexesLoaded = false;
+          const url = basePath + '/tables/{{ schema }}/{{ name }}/indexes';
+          fetch(url).then(r => r.text()).then(html => {
+            document.getElementById('tab-indexes').innerHTML = html;
+          });
+        }, 1500);
       } else {
         resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + (data.error || 'Unknown error') + '</div>';
         resultDiv.style.display = 'block';
@@ -666,7 +675,16 @@ document.getElementById('reindex-all-confirm').addEventListener('click', functio
       if (data.success) {
         resultDiv.innerHTML = '<div class="alert alert-success"><i class="ti ti-check me-2"></i>REINDEX TABLE completed successfully!</div>';
         resultDiv.style.display = 'block';
-        setTimeout(() => location.reload(), 1500);
+        setTimeout(() => {
+          // Zavřít modal
+          bootstrap.Modal.getInstance(document.getElementById('reindex-all-modal')).hide();
+          // Reload indexes tab (jsme v něm, jinak bychom tu tlačítko neviděli)
+          indexesLoaded = false;
+          const url = basePath + '/tables/{{ schema }}/{{ name }}/indexes';
+          fetch(url).then(r => r.text()).then(html => {
+            document.getElementById('tab-indexes').innerHTML = html;
+          });
+        }, 1500);
       } else {
         resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + (data.error || 'Unknown error') + '</div>';
         resultDiv.style.display = 'block';
