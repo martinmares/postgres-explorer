@@ -9,7 +9,7 @@ use sqlx::Row;
 use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState, CACHE_TTL, CacheEntry};
 use crate::templates::{IndexRow, IndicesTemplate, IndicesTableTemplate};
 use crate::utils::format::bytes_to_human;
-use crate::utils::filter::parse_pattern_expression;
+use crate::utils::filter::{matches_simple_terms, parse_simple_terms};
 use std::time::Instant;
 
 #[derive(sqlx::FromRow, Clone)]
@@ -232,14 +232,9 @@ pub async fn list_indices(
     let filter_start = Instant::now();
     let total_count = indices.len();
     if query.filter != "*" && !query.filter.trim().is_empty() {
-        let (includes, excludes) = parse_pattern_expression(&query.filter);
-        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
-            indices.retain(|i| {
-                let matches_include = includes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-                if !matches_include { return false; }
-                let matches_exclude = excludes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-                !matches_exclude
-            });
+        let terms = parse_simple_terms(&query.filter);
+        if !terms.is_empty() {
+            indices.retain(|i| matches_simple_terms(&i.name, &terms));
         }
     }
     let filter_ms = filter_start.elapsed().as_millis();
@@ -400,14 +395,9 @@ pub async fn indices_table(
     let total_count = indices.len();
     let filter_start = Instant::now();
     if query.filter != "*" && !query.filter.trim().is_empty() {
-        let (includes, excludes) = parse_pattern_expression(&query.filter);
-        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
-            indices.retain(|i| {
-                let matches_include = includes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-                if !matches_include { return false; }
-                let matches_exclude = excludes.iter().any(|p| crate::utils::filter::matches_pattern(&i.name, p));
-                !matches_exclude
-            });
+        let terms = parse_simple_terms(&query.filter);
+        if !terms.is_empty() {
+            indices.retain(|i| matches_simple_terms(&i.name, &terms));
         }
     }
     let filter_ms = filter_start.elapsed().as_millis();

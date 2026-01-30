@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState, CACHE_TTL, CacheEntry};
 use crate::templates::{TableModalTemplate, TableRow, TablesTemplate, TablesTableTemplate};
-use crate::utils::filter::parse_pattern_expression;
+use crate::utils::filter::{matches_simple_terms, parse_simple_terms};
 use crate::utils::format::bytes_to_human;
 use sqlx::Row;
 use axum_extra::extract::CookieJar;
@@ -271,28 +271,13 @@ pub async fn list_tables(
     }
     let schema_filter_ms = schema_filter_start.elapsed().as_millis();
 
-    // Aplikuj filtr pomocí parse_pattern_expression (jen názvy tabulek)
+    // Aplikuj jednoduchý substring filtr (OR přes čárku)
     let filter_start = Instant::now();
     let total_count = all_tables.len();
     if query.filter != "*" && !query.filter.trim().is_empty() {
-        let (includes, excludes) = parse_pattern_expression(&query.filter);
-        tracing::debug!(filter = %query.filter, ?includes, ?excludes, total = all_tables.len(), "tables filter parsed");
-        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
-            all_tables.retain(|t| {
-                let matches_include = includes.iter().any(|pattern| {
-                    crate::utils::filter::matches_pattern(&t.name, pattern)
-                });
-
-                if !matches_include {
-                    return false;
-                }
-
-                let matches_exclude = excludes.iter().any(|pattern| {
-                    crate::utils::filter::matches_pattern(&t.name, pattern)
-                });
-
-                !matches_exclude
-            });
+        let terms = parse_simple_terms(&query.filter);
+        if !terms.is_empty() {
+            all_tables.retain(|t| matches_simple_terms(&t.name, &terms));
         }
     }
     let filter_ms = filter_start.elapsed().as_millis();
@@ -512,21 +497,9 @@ pub async fn tables_table(
         "tables_table before filter"
     );
     if query.filter != "*" && !query.filter.trim().is_empty() {
-        let (includes, excludes) = parse_pattern_expression(&query.filter);
-        tracing::debug!(schema = %query.schema, filter = %query.filter, ?includes, ?excludes, total = all_tables.len(), "tables_table filter parsed");
-        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
-            all_tables.retain(|t| {
-                let matches_include = includes.iter().any(|pattern| {
-                    crate::utils::filter::matches_pattern(&t.name, pattern)
-                });
-                if !matches_include {
-                    return false;
-                }
-                let matches_exclude = excludes.iter().any(|pattern| {
-                    crate::utils::filter::matches_pattern(&t.name, pattern)
-                });
-                !matches_exclude
-            });
+        let terms = parse_simple_terms(&query.filter);
+        if !terms.is_empty() {
+            all_tables.retain(|t| matches_simple_terms(&t.name, &terms));
         }
     }
     let filter_ms = filter_start.elapsed().as_millis();

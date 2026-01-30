@@ -27,14 +27,14 @@
             </select>
           </div>
           <div class="col">
-            <label class="form-label">Index filter (wildcard * / OR / AND NOT)</label>
+            <label class="form-label">Index name filter (substring, OR via comma)</label>
             <input
               type="text"
               class="form-control"
               id="filter-input"
               name="filter"
-              placeholder="idx_*, *pkey, * -temp*"
-              value="{{ filter }}"
+              placeholder="idx,pkey,primary"
+              value="{% if filter == "*" %}{% else %}{{ filter }}{% endif %}"
               oninput="handleIndexFilterInput(this)">
           </div>
           <div class="col-auto">

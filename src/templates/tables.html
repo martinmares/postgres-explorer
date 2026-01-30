@@ -25,14 +25,14 @@
                         </select>
                     </div>
                     <div class="col">
-                        <label class="form-label">Tables filter - wildcard supports *, use OR (or ','), use AND NOT (or '-')</label>
+                        <label class="form-label">Table name filter (substring, OR via comma)</label>
                         <input
                             type="text"
                             class="form-control"
                             id="filter-input"
                             name="filter"
-                            placeholder="např: public, user_*, *audit -test"
-                            value="{{ display_filter }}"
+                            placeholder="např: related,act,bill"
+                            value="{% if display_filter == "*" %}{% else %}{{ display_filter }}{% endif %}"
                             oninput="handleFilterInput(this)">
                     </div>
                     <div class="col-auto">

@@ -61,6 +61,25 @@ pub fn parse_pattern_expression(input: &str) -> (Vec<String>, Vec<String>) {
     (includes, excludes)
 }
 
+pub fn parse_simple_terms(input: &str) -> Vec<String> {
+    input
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+pub fn matches_simple_terms(value: &str, terms: &[String]) -> bool {
+    if terms.is_empty() {
+        return true;
+    }
+    let value_lc = value.to_lowercase();
+    terms
+        .iter()
+        .any(|t| value_lc.contains(&t.to_lowercase()))
+}
+
 /// Testuje, zda název matchuje wildcard pattern.
 ///
 /// # Podporované wildcards

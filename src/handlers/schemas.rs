@@ -7,7 +7,7 @@ use axum_extra::extract::CookieJar;
 
 use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState, CACHE_TTL, CacheEntry};
 use crate::templates::{SchemaRow, SchemasTemplate, SchemasTableTemplate};
-use crate::utils::filter::parse_pattern_expression;
+use crate::utils::filter::{matches_simple_terms, parse_simple_terms};
 use std::time::Instant;
 
 #[derive(Deserialize)]
@@ -173,22 +173,14 @@ pub async fn list_schemas(
 
     let (mut all_schemas, is_fetching) = get_cached_schemas(&state, &active).await;
 
-    // Filtr
+    // Filtr (substring OR přes čárku)
     let total_count = all_schemas.len();
-    let (includes, excludes) = parse_pattern_expression(&query.filter);
-
-    all_schemas.retain(|s| {
-        let matches_include = includes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&s.name, pattern)
-        });
-        if !matches_include {
-            return false;
+    if query.filter != "*" && !query.filter.trim().is_empty() {
+        let terms = parse_simple_terms(&query.filter);
+        if !terms.is_empty() {
+            all_schemas.retain(|s| matches_simple_terms(&s.name, &terms));
         }
-        let matches_exclude = excludes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&s.name, pattern)
-        });
-        !matches_exclude
-    });
+    }
 
     let filtered_count = all_schemas.len();
 
@@ -299,20 +291,12 @@ pub async fn schemas_table(
     let (mut all_schemas, is_fetching) = get_cached_schemas(&state, &active).await;
 
     let total_count = all_schemas.len();
-    let (includes, excludes) = parse_pattern_expression(&query.filter);
-
-    all_schemas.retain(|s| {
-        let matches_include = includes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&s.name, pattern)
-        });
-        if !matches_include {
-            return false;
+    if query.filter != "*" && !query.filter.trim().is_empty() {
+        let terms = parse_simple_terms(&query.filter);
+        if !terms.is_empty() {
+            all_schemas.retain(|s| matches_simple_terms(&s.name, &terms));
         }
-        let matches_exclude = excludes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&s.name, pattern)
-        });
-        !matches_exclude
-    });
+    }
 
     let filtered_count = all_schemas.len();
 

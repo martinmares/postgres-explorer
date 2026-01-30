@@ -16,14 +16,14 @@
             <div class="card-body">
                 <div class="row align-items-end g-2">
                     <div class="col">
-                        <label class="form-label">Schemas filter - wildcard supports *, use OR (or ','), use AND NOT (or '-')</label>
+                        <label class="form-label">Schema filter (substring, OR via comma)</label>
                         <input
                             type="text"
                             class="form-control"
                             id="filter-input"
                             name="filter"
-                            placeholder="např: public, user_* -test"
-                            value="{{ filter }}"
+                            placeholder="např: ticket,public,auth"
+                            value="{% if filter == "*" %}{% else %}{{ filter }}{% endif %}"
                             oninput="handleSchemasFilter(this)">
                     </div>
                     <div class="col-auto">
