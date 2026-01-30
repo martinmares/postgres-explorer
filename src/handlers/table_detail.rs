@@ -757,7 +757,7 @@ pub async fn table_relationships(
         let foreign_cols: String = row.get("foreign_columns");
 
         mermaid.push_str(&format!(
-            "    {} }}o--|| {} : \"{} -> {}\"\n",
+            "    {} }}o--|| {} : \"{} to {}\"\n",
             current_table_id, foreign_id, local_cols, foreign_cols
         ));
     }
@@ -771,7 +771,7 @@ pub async fn table_relationships(
         let referenced_cols: String = row.get("referenced_columns");
 
         mermaid.push_str(&format!(
-            "    {} }}o--|| {} : \"{} -> {}\"\n",
+            "    {} }}o--|| {} : \"{} to {}\"\n",
             ref_id, current_table_id, ref_cols, referenced_cols
         ));
     }
@@ -782,8 +782,10 @@ pub async fn table_relationships(
     let mut html = String::new();
     html.push_str("<div class='row'>");
     html.push_str("<div class='col-12 mb-4'>");
-    html.push_str("<div class='card'><div class='card-body'>");
-    html.push_str(&format!("<pre class='mermaid'>{}</pre>", mermaid));
+    html.push_str("<div class='card'><div class='card-body text-center'>");
+    html.push_str("<pre class='mermaid' style='background: transparent; border: none; text-align: center;'>");
+    html.push_str(&mermaid);
+    html.push_str("</pre>");
     html.push_str("</div></div>");
     html.push_str("</div>");
 
@@ -839,8 +841,7 @@ pub async fn table_relationships(
 
     html.push_str("</div>");
 
-    // Reinitialize mermaid after content loads
-    html.push_str("<script>if (window.mermaid) { window.mermaid.run(); }</script>");
-
+    // Note: Mermaid rendering is triggered from the fetch callback in table_detail.html
+    // Scripts inserted via innerHTML don't execute, so we handle it there
     Html(html)
 }

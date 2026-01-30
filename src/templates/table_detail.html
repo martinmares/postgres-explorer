@@ -609,6 +609,23 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
         .then(r => r.text())
         .then(html => {
           document.getElementById('tab-relationships').innerHTML = html;
+          // Manually trigger Mermaid rendering with current theme
+          setTimeout(() => {
+            if (typeof mermaid !== 'undefined') {
+              // Reinitialize with current theme
+              const currentTheme = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'default';
+              mermaid.initialize({
+                startOnLoad: false,
+                theme: currentTheme,
+                securityLevel: 'loose'
+              });
+
+              const els = document.querySelectorAll('#tab-relationships .mermaid');
+              if (els.length > 0) {
+                mermaid.run({ nodes: els });
+              }
+            }
+          }, 100);
         });
     }
   });
