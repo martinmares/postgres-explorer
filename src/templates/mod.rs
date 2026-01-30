@@ -112,7 +112,7 @@ pub struct TableDataTemplate {
     pub name: String,
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
-    pub fk_meta: Vec<Option<FkMeta>>,
+    pub col_meta: Vec<ColumnMeta>,
     pub page: usize,
     pub per_page: usize,
     pub has_prev: bool,
@@ -124,6 +124,12 @@ pub struct FkMeta {
     pub schema: String,
     pub table: String,
     pub column: String,
+}
+
+#[derive(Clone)]
+pub struct ColumnMeta {
+    pub is_json: bool,
+    pub fk: Option<FkMeta>,
 }
 
 #[derive(Template)]

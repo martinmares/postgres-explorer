@@ -41,7 +41,17 @@
         <tr>
           {% for cell in row %}
           <td class="text-truncate" style="max-width: 240px;">
-            {% if let Some(fk) = fk_meta[loop.index0] %}
+          {% set meta = col_meta[loop.index0] %}
+          {% if meta.is_json %}
+            {% if cell != "" %}
+              <a href="#" class="json-cell" data-json="{{ cell }}" onclick="event.preventDefault();">
+                <i class="ti ti-braces me-1"></i>View JSON
+              </a>
+            {% else %}
+              {{ cell }}
+            {% endif %}
+          {% else %}
+            {% if let Some(fk) = meta.fk %}
               {% if cell != "" %}
                 <a href="#"
                    class="fk-cell"
@@ -58,6 +68,7 @@
             {% else %}
               {{ cell }}
             {% endif %}
+          {% endif %}
           </td>
           {% endfor %}
         </tr>

@@ -486,6 +486,20 @@
   </div>
 </div>
 
+<div class="modal modal-blur fade" id="json-viewer-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">JSON Viewer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <pre class="m-0"><code id="json-viewer-code" class="language-json"></code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Convert UTC timestamps to local timezone
 document.addEventListener('DOMContentLoaded', function() {
@@ -673,6 +687,7 @@ function loadTableData(page) {
       if (target) {
         target.innerHTML = html;
         initFkPreview();
+        initJsonCells();
       }
     });
 }
@@ -748,6 +763,37 @@ function initFkPreview() {
       fkPreviewTimer = setTimeout(() => {
         pop.style.display = 'none';
       }, 200);
+    });
+  });
+}
+
+function initJsonCells() {
+  const container = document.getElementById('tab-data');
+  if (!container) return;
+  container.querySelectorAll('.json-cell').forEach(el => {
+    if (el.dataset.bound) return;
+    el.dataset.bound = 'true';
+    el.addEventListener('click', function() {
+      const raw = el.dataset.json || '';
+      let pretty = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        pretty = JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        // keep raw
+      }
+      const code = document.getElementById('json-viewer-code');
+      if (code) {
+        if (window.hljs) {
+          const highlighted = window.hljs.highlight(pretty, { language: 'json' }).value;
+          code.innerHTML = highlighted;
+          code.classList.add('hljs');
+        } else {
+          code.textContent = pretty;
+        }
+      }
+      const modal = new bootstrap.Modal(document.getElementById('json-viewer-modal'));
+      modal.show();
     });
   });
 }

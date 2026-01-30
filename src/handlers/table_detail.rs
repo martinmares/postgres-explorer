@@ -9,7 +9,7 @@ use serde_json::Value as JsonValue;
 use regex::Regex;
 
 use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
-use crate::templates::{FkMeta, TableDataTemplate, TableDetailTemplate};
+use crate::templates::{ColumnMeta, FkMeta, TableDataTemplate, TableDetailTemplate};
 use crate::utils::format::bytes_to_human;
 
 #[derive(sqlx::FromRow)]
@@ -214,13 +214,14 @@ pub async fn table_data(
     let mut columns: Vec<String> = Vec::new();
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut fk_map: std::collections::HashMap<String, (String, String, String)> = std::collections::HashMap::new();
-    let mut fk_meta: Vec<Option<FkMeta>> = Vec::new();
+    let mut col_meta: Vec<ColumnMeta> = Vec::new();
+    let mut json_cols: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     match connect_pg(&state, &active).await {
         Ok(pg) => {
             let cols = sqlx::query(
                 r#"
-                SELECT column_name
+                SELECT column_name, data_type
                 FROM information_schema.columns
                 WHERE table_schema = $1 AND table_name = $2
                 ORDER BY ordinal_position
@@ -232,10 +233,14 @@ pub async fn table_data(
             .await
             .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-            columns = cols
-                .into_iter()
-                .map(|r| r.get::<String, _>("column_name"))
-                .collect();
+            for r in cols {
+                let col_name: String = r.get("column_name");
+                let data_type: String = r.get("data_type");
+                if data_type == "json" || data_type == "jsonb" {
+                    json_cols.insert(col_name.clone());
+                }
+                columns.push(col_name);
+            }
 
             if !columns.is_empty() {
                 if let Ok(fk_rows) = sqlx::query(
@@ -304,14 +309,18 @@ pub async fn table_data(
     }
 
     if !columns.is_empty() {
-        fk_meta = columns
+        col_meta = columns
             .iter()
             .map(|col| {
-                fk_map.get(col).map(|(fs, ft, fc)| FkMeta {
+                let fk = fk_map.get(col).map(|(fs, ft, fc)| FkMeta {
                     schema: fs.clone(),
                     table: ft.clone(),
                     column: fc.clone(),
-                })
+                });
+                ColumnMeta {
+                    is_json: json_cols.contains(col),
+                    fk,
+                }
             })
             .collect();
     }
@@ -325,7 +334,7 @@ pub async fn table_data(
         name,
         columns,
         rows,
-        fk_meta,
+        col_meta,
         page,
         per_page,
         has_prev,
