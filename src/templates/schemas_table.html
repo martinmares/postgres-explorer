@@ -45,13 +45,12 @@
                                 {% endif %}
                             {% endif %}
                         </th>
-                        <th class="w-1"></th>
                     </tr>
                 </thead>
                 <tbody>
                 {% if schemas.len() == 0 %}
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4">
+                        <td colspan="5" class="text-center text-muted py-4">
                             No schemas match your filter
                         </td>
                     </tr>
@@ -63,9 +62,6 @@
                         <td>{{ s.table_count }}</td>
                         <td>{{ s.index_count }}</td>
                         <td>{{ s.total_size }}</td>
-                        <td>
-                            <a class="btn btn-sm btn-outline-primary" href="{% if ctx.base_path == "/" %}/tables/{{ s.name }}/*{% else %}{{ ctx.base_path }}/tables/{{ s.name }}/*{% endif %}" onclick="event.stopPropagation()">View tables</a>
-                        </td>
                     </tr>
                     {% endfor %}
                 {% endif %}
