@@ -45,11 +45,14 @@ pub struct TablesTemplate {
     pub showing_end: usize,
     pub tables: Vec<TableRow>,
     pub schemas: Vec<String>,
+    pub initial_table_html: String,
 }
 
 #[derive(Template)]
 #[template(path = "tables_table.html")]
 pub struct TablesTableTemplate {
+    pub base_path: String,
+    pub schema: String,
     pub filter: String,
     pub sort_by: String,
     pub sort_order: String,
@@ -88,6 +91,11 @@ pub struct TableModalTemplate {
     pub size: String,
     pub fragmentation: String,
     pub authorized: bool,
+    pub columns: Vec<ColumnInfo>,
+    pub indexes: Vec<IndexInfo>,
+    pub constraints: Vec<ConstraintInfo>,
+    pub stats: TableStats,
+    pub storage: TableStorage,
 }
 
 #[derive(Template)]
@@ -126,6 +134,7 @@ pub struct SchemasTemplate {
 #[derive(Template)]
 #[template(path = "schemas_table.html")]
 pub struct SchemasTableTemplate {
+    pub ctx: AppContext,
     pub filter: String,
     pub sort_by: String,
     pub sort_order: String,
@@ -162,6 +171,7 @@ pub struct TableRow {
     pub rows: String,
     pub size: String,
     pub index_count: String,
+    pub partitions: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -171,6 +181,56 @@ pub struct IndexRow {
     pub name: String,
     pub size: String,
     pub scans: String,
+}
+
+#[derive(Clone)]
+pub struct ColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: String,
+    pub default_value: String,
+}
+
+#[derive(Clone)]
+pub struct IndexInfo {
+    pub name: String,
+    pub size: String,
+    pub scans: String,
+    pub unique: bool,
+    pub primary: bool,
+    pub definition: String,
+}
+
+#[derive(Clone)]
+pub struct ConstraintInfo {
+    pub name: String,
+    pub ctype: String,
+    pub definition: String,
+}
+
+#[derive(Clone)]
+pub struct TableStats {
+    pub live_rows: String,
+    pub dead_rows: String,
+    pub ins: String,
+    pub upd: String,
+    pub del: String,
+    pub vacuum_count: String,
+    pub autovacuum_count: String,
+    pub analyze_count: String,
+    pub autoanalyze_count: String,
+    pub last_vacuum: String,
+    pub last_autovacuum: String,
+    pub last_analyze: String,
+    pub last_autoanalyze: String,
+}
+
+#[derive(Clone)]
+pub struct TableStorage {
+    pub table: String,
+    pub indexes: String,
+    pub toast: String,
+    pub total: String,
 }
 
 #[derive(Clone)]
@@ -191,4 +251,7 @@ pub struct TopTable {
     pub rows: String,
     pub relative_percent: f64,
     pub partitions: Vec<String>,
+    pub stats_stale: bool,
+    pub schema_filter_url: String,
+    pub table_filter_url: String,
 }

@@ -1,31 +1,248 @@
-<div class="card">
-  <div class="card-body">
-    <h3 class="card-title">{{ schema }}.{{ name }}</h3>
+<div class="d-flex align-items-center">
+  <div>
+    <h3 class="card-title mb-1">{{ schema }}.{{ name }}</h3>
+    <div class="text-muted">Quick detail</div>
+  </div>
+  <div class="ms-auto">
+    <a class="btn btn-sm btn-outline-primary" href="{% if ctx.base_path == "/" %}/tables/{{ schema }}/{{ name }}/detail{% else %}{{ ctx.base_path }}/tables/{{ schema }}/{{ name }}/detail{% endif %}">
+      Open detail
+    </a>
+  </div>
+</div>
+
+<div class="row row-cards mt-2">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Row estimate</div>
+        <div class="h4">{{ rows }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title">Total size</div>
+        <div class="h4">{{ size }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if !authorized %}
+<div class="mt-3">
+  {% include "partials/no_authorized.html" %}
+</div>
+{% endif %}
+
+<ul class="nav nav-tabs mt-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-overview" type="button" role="tab">Overview</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-columns" type="button" role="tab">Columns</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-indexes" type="button" role="tab">Indexes</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-constraints" type="button" role="tab">Constraints</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats" type="button" role="tab">Stats</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-storage" type="button" role="tab">Storage</button>
+  </li>
+</ul>
+
+<div class="tab-content mt-3">
+  <div class="tab-pane fade show active" id="tab-overview" role="tabpanel">
     <div class="row row-cards">
       <div class="col-md-6">
         <div class="card">
           <div class="card-body">
-            <div class="card-title">Row estimate</div>
-            <div class="h4">{{ rows }}</div>
+            <div class="card-title">Fragmentation</div>
+            <div class="h4">{{ fragmentation }}</div>
           </div>
         </div>
       </div>
       <div class="col-md-6">
         <div class="card">
           <div class="card-body">
-            <div class="card-title">Size</div>
-            <div class="h4">{{ size }}</div>
+            <div class="card-title">Storage breakdown</div>
+            <div class="text-muted">Table: {{ storage.table }}</div>
+            <div class="text-muted">Indexes: {{ storage.indexes }}</div>
+            <div class="text-muted">TOAST: {{ storage.toast }}</div>
           </div>
         </div>
       </div>
     </div>
-    <div class="mt-3">
-      {% if authorized %}
-        <div class="text-muted">Fragmentation</div>
-        <div class="h4">{{ fragmentation }}</div>
-      {% else %}
-        {% include "partials/no_authorized.html" %}
-      {% endif %}
+  </div>
+
+  <div class="tab-pane fade" id="tab-columns" role="tabpanel">
+    <div class="table-responsive">
+      <table class="table table-vcenter">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Nullable</th>
+            <th>Default</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% if columns.len() == 0 %}
+          <tr><td colspan="4" class="text-muted">No columns found.</td></tr>
+        {% else %}
+          {% for c in columns %}
+          <tr>
+            <td><code>{{ c.name }}</code></td>
+            <td>{{ c.data_type }}</td>
+            <td>{{ c.nullable }}</td>
+            <td>{{ c.default_value }}</td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tab-indexes" role="tabpanel">
+    <div class="table-responsive">
+      <table class="table table-vcenter">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Size</th>
+            <th>Scans</th>
+            <th>Flags</th>
+            <th>Definition</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% if indexes.len() == 0 %}
+          <tr><td colspan="5" class="text-muted">No indexes found.</td></tr>
+        {% else %}
+          {% for i in indexes %}
+          <tr>
+            <td><code>{{ i.name }}</code></td>
+            <td class="text-end">{{ i.size }}</td>
+            <td class="text-end">{{ i.scans }}</td>
+            <td>
+              {% if i.primary %}<span class="badge bg-green-lt">PK</span>{% endif %}
+              {% if i.unique %}<span class="badge bg-blue-lt">Unique</span>{% endif %}
+            </td>
+            <td class="text-muted">{{ i.definition }}</td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tab-constraints" role="tabpanel">
+    <div class="table-responsive">
+      <table class="table table-vcenter">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Definition</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% if constraints.len() == 0 %}
+          <tr><td colspan="3" class="text-muted">No constraints found.</td></tr>
+        {% else %}
+          {% for c in constraints %}
+          <tr>
+            <td><code>{{ c.name }}</code></td>
+            <td>{{ c.ctype }}</td>
+            <td class="text-muted">{{ c.definition }}</td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tab-stats" role="tabpanel">
+    <div class="row row-cards">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Row stats</div>
+            <div class="text-muted">Live: {{ stats.live_rows }}</div>
+            <div class="text-muted">Dead: {{ stats.dead_rows }}</div>
+            <div class="text-muted">Inserts: {{ stats.ins }}</div>
+            <div class="text-muted">Updates: {{ stats.upd }}</div>
+            <div class="text-muted">Deletes: {{ stats.del }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Maintenance</div>
+            <div class="text-muted">Vacuum: {{ stats.vacuum_count }}</div>
+            <div class="text-muted">Autovacuum: {{ stats.autovacuum_count }}</div>
+            <div class="text-muted">Analyze: {{ stats.analyze_count }}</div>
+            <div class="text-muted">Autoanalyze: {{ stats.autoanalyze_count }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Last maintenance</div>
+            <div class="text-muted">Last vacuum: {{ stats.last_vacuum }}</div>
+            <div class="text-muted">Last autovacuum: {{ stats.last_autovacuum }}</div>
+            <div class="text-muted">Last analyze: {{ stats.last_analyze }}</div>
+            <div class="text-muted">Last autoanalyze: {{ stats.last_autoanalyze }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tab-storage" role="tabpanel">
+    <div class="row row-cards">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Table</div>
+            <div class="h4">{{ storage.table }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Indexes</div>
+            <div class="h4">{{ storage.indexes }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">TOAST</div>
+            <div class="h4">{{ storage.toast }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-body">
+            <div class="card-title">Total</div>
+            <div class="h4">{{ storage.total }}</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

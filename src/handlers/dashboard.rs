@@ -108,13 +108,14 @@ pub async fn dashboard(
                     COALESCE(parent.relname, c.relname) as parent_name,
                     COALESCE(parent_ns.nspname, n.nspname) as parent_schema,
                     pg_total_relation_size(c.oid) as size_bytes,
-                    c.reltuples::bigint as row_estimate,
+                    COALESCE(NULLIF(s.n_live_tup, 0), NULLIF(c.reltuples, 0), 0)::bigint as row_estimate,
                     CASE WHEN parent.oid IS NOT NULL THEN true ELSE false END as is_partition
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
                 LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
                 LEFT JOIN pg_class parent ON parent.oid = i.inhparent
                 LEFT JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
+                LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
                 WHERE c.relkind IN ('r', 'p')
                   AND n.nspname NOT IN ('pg_catalog', 'information_schema')
             )
@@ -142,10 +143,12 @@ pub async fn dashboard(
                 let row_estimate: i64 = row.get("row_estimate");
                 let partitions: Option<Vec<String>> = row.try_get("partitions").ok();
                 let relative_percent = if max_size > 0 {
-                    (size_bytes as f64 / max_size as f64) * 100.0
+                    ((size_bytes as f64 / max_size as f64) * 100.0).min(100.0).max(0.0)
                 } else {
                     0.0
                 };
+
+                let stats_stale = row_estimate == 0 && size_bytes > 0;
 
                 top_tables.push(TopTable {
                     schema: schema.clone(),
@@ -155,6 +158,9 @@ pub async fn dashboard(
                     rows: format_number(row_estimate),
                     partitions: partitions.unwrap_or_default(),
                     relative_percent,
+                    stats_stale,
+                    schema_filter_url: format!("/tables/{}/{}", urlencoding::encode(&schema), urlencoding::encode("*")),
+                    table_filter_url: format!("/tables/{}/{}/detail", urlencoding::encode(&schema), urlencoding::encode(&name)),
                 });
             }
         }

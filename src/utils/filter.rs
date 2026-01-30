@@ -77,34 +77,26 @@ pub fn parse_pattern_expression(input: &str) -> (Vec<String>, Vec<String>) {
 /// assert!(!matches_pattern("admin", "user_*"));
 /// ```
 pub fn matches_pattern(name: &str, pattern: &str) -> bool {
-    let parts: Vec<&str> = pattern.split('*').collect();
-    if parts.is_empty() {
-        return name == pattern;
-    }
-
-    let mut current_pos = 0;
-    for (i, part) in parts.iter().enumerate() {
-        if part.is_empty() {
-            continue;
-        }
-        if i == 0 && !pattern.starts_with('*') {
-            if !name.starts_with(part) {
-                return false;
+    // Treat pattern as SQL-like with '*' wildcard.
+    // Convert to regex: escape all, then replace escaped '*' with '.*', anchor to full string.
+    let mut regex_str = String::with_capacity(pattern.len() * 2 + 2);
+    regex_str.push('^');
+    for ch in pattern.chars() {
+        match ch {
+            '*' => regex_str.push_str(".*"),
+            '.' | '+' | '(' | ')' | '|' | '^' | '$' | '{' | '}' | '[' | ']' | '\\' | '?' => {
+                regex_str.push('\\');
+                regex_str.push(ch);
             }
-            current_pos = part.len();
-            continue;
-        }
-        if i == parts.len() - 1 && !pattern.ends_with('*') {
-            return name.ends_with(part);
-        }
-        if let Some(pos) = name[current_pos..].find(part) {
-            current_pos += pos + part.len();
-        } else {
-            return false;
+            _ => regex_str.push(ch),
         }
     }
+    regex_str.push('$');
 
-    true
+    match regex::Regex::new(&regex_str) {
+        Ok(re) => re.is_match(name),
+        Err(_) => false,
+    }
 }
 
 /// Filtruje seznam názvů podle pattern expression.

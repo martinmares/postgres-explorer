@@ -1,11 +1,13 @@
-<div id="tables-table" data-sort-by="{{ sort_by }}" data-sort-order="{{ sort_order }}">
-    <div class="card">
+<div class="card" data-sort-by="{{ sort_by }}" data-sort-order="{{ sort_order }}">
         <div class="table-responsive">
             <table class="table table-vcenter card-table table-hover">
                 <thead>
                     <tr>
                         <th style="width: 50px;">#</th>
-                        <th class="sortable" data-sort="schema">
+                        <th style="cursor: pointer;"
+                            hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by=schema&sort_order={% if sort_by == "schema" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+                            hx-target="#tables-table"
+                            hx-swap="innerHTML">
                             Schema
                             {% if sort_by == "schema" %}
                                 {% if sort_order == "asc" %}
@@ -15,7 +17,10 @@
                                 {% endif %}
                             {% endif %}
                         </th>
-                        <th class="sortable" data-sort="name">
+                        <th style="cursor: pointer;"
+                            hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by=name&sort_order={% if sort_by == "name" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+                            hx-target="#tables-table"
+                            hx-swap="innerHTML">
                             Table
                             {% if sort_by == "name" %}
                                 {% if sort_order == "asc" %}
@@ -25,7 +30,10 @@
                                 {% endif %}
                             {% endif %}
                         </th>
-                        <th class="sortable" data-sort="rows">
+                        <th class="text-end" style="cursor: pointer;"
+                            hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by=rows&sort_order={% if sort_by == "rows" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+                            hx-target="#tables-table"
+                            hx-swap="innerHTML">
                             Rows
                             {% if sort_by == "rows" %}
                                 {% if sort_order == "asc" %}
@@ -35,7 +43,10 @@
                                 {% endif %}
                             {% endif %}
                         </th>
-                        <th class="sortable" data-sort="size">
+                        <th class="text-end" style="cursor: pointer;"
+                            hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by=size&sort_order={% if sort_by == "size" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}desc{% endif %}"
+                            hx-target="#tables-table"
+                            hx-swap="innerHTML">
                             Size
                             {% if sort_by == "size" %}
                                 {% if sort_order == "asc" %}
@@ -45,7 +56,10 @@
                                 {% endif %}
                             {% endif %}
                         </th>
-                        <th class="sortable" data-sort="indexes">
+                        <th style="cursor: pointer;"
+                            hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by=indexes&sort_order={% if sort_by == "indexes" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+                            hx-target="#tables-table"
+                            hx-swap="innerHTML">
                             Indexes
                             {% if sort_by == "indexes" %}
                                 {% if sort_order == "asc" %}
@@ -55,7 +69,7 @@
                                 {% endif %}
                             {% endif %}
                         </th>
-                        <th class="w-1"></th>
+                        <th class="w-1">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -70,12 +84,32 @@
                     <tr>
                         <td class="text-muted">{{ t.num }}</td>
                         <td><span class="badge bg-azure-lt">{{ t.schema }}</span></td>
-                        <td><a href="/tables/{{ t.schema }}/{{ t.name }}">{{ t.name }}</a></td>
-                        <td>{{ t.rows }}</td>
-                        <td>{{ t.size }}</td>
+                        <td>
+                            <div>
+                                <a href="{% if base_path == "/" %}/tables/{{ t.schema }}/{{ t.name }}/detail{% else %}{{ base_path }}/tables/{{ t.schema }}/{{ t.name }}/detail{% endif %}">
+                                    {{ t.name }}
+                                </a>
+                            </div>
+                            {% if t.partitions.len() > 0 %}
+                            <div class="text-muted small mt-1">
+                                <i class="ti ti-layout-distribute-vertical"></i>
+                                {{ t.partitions.len() }} partitions: {{ t.partitions|join(", ") }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="text-end text-nowrap">{{ t.rows }}</td>
+                        <td class="text-end text-nowrap">{{ t.size }}</td>
                         <td>{{ t.index_count }}</td>
                         <td>
-                            <a class="btn btn-sm btn-outline-secondary" href="/tables/{{ t.schema }}/{{ t.name }}/modal">Detail</a>
+                            <div class="btn-list">
+                                <button class="btn btn-sm btn-icon btn-ghost-primary"
+                                        data-schema="{{ t.schema }}"
+                                        data-name="{{ t.name }}"
+                                        onclick="openTableDetail(this)"
+                                        title="Quick detail">
+                                    <i class="ti ti-info-circle"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -97,9 +131,9 @@
                 {% if page > 1 %}
                 <li class="page-item">
                     <a class="page-link" href="#"
-                       hx-get="/tables/table?filter={{ filter }}&page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                       hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
                        hx-target="#tables-table"
-                       hx-swap="outerHTML">
+                       hx-swap="innerHTML">
                         <i class="ti ti-chevron-left"></i> Prev
                     </a>
                 </li>
@@ -113,9 +147,9 @@
                 {% if page > 2 %}
                 <li class="page-item">
                     <a class="page-link" href="#"
-                       hx-get="/tables/table?filter={{ filter }}&page=1&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                       hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page=1&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
                        hx-target="#tables-table"
-                       hx-swap="outerHTML">
+                       hx-swap="innerHTML">
                         1
                     </a>
                 </li>
@@ -127,9 +161,9 @@
                 {% if page > 1 %}
                 <li class="page-item">
                     <a class="page-link" href="#"
-                       hx-get="/tables/table?filter={{ filter }}&page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                       hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
                        hx-target="#tables-table"
-                       hx-swap="outerHTML">
+                       hx-swap="innerHTML">
                         {{ page - 1 }}
                     </a>
                 </li>
@@ -142,9 +176,9 @@
                 {% if page < total_pages %}
                 <li class="page-item">
                     <a class="page-link" href="#"
-                       hx-get="/tables/table?filter={{ filter }}&page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                       hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
                        hx-target="#tables-table"
-                       hx-swap="outerHTML">
+                       hx-swap="innerHTML">
                         {{ page + 1 }}
                     </a>
                 </li>
@@ -156,9 +190,9 @@
                 {% endif %}
                 <li class="page-item">
                     <a class="page-link" href="#"
-                       hx-get="/tables/table?filter={{ filter }}&page={{ total_pages }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                       hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page={{ total_pages }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
                        hx-target="#tables-table"
-                       hx-swap="outerHTML">
+                       hx-swap="innerHTML">
                         {{ total_pages }}
                     </a>
                 </li>
@@ -168,9 +202,9 @@
                 {% if page < total_pages %}
                 <li class="page-item">
                     <a class="page-link" href="#"
-                       hx-get="/tables/table?filter={{ filter }}&page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+                       hx-get="{% if base_path == "/" %}/tables/{{ schema }}/{{ filter }}/table{% else %}{{ base_path }}/tables/{{ schema }}/{{ filter }}/table{% endif %}?page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
                        hx-target="#tables-table"
-                       hx-swap="outerHTML">
+                       hx-swap="innerHTML">
                         Next <i class="ti ti-chevron-right"></i>
                     </a>
                 </li>
@@ -184,29 +218,3 @@
         </div>
         {% endif %}
     </div>
-</div>
-
-<script>
-// Sortable headers
-document.querySelectorAll('.sortable').forEach(th => {
-    th.style.cursor = 'pointer';
-    th.addEventListener('click', function() {
-        const sortBy = this.dataset.sort;
-        const currentSortBy = '{{ sort_by }}';
-        const currentSortOrder = '{{ sort_order }}';
-
-        let newSortOrder = 'asc';
-        if (sortBy === currentSortBy && currentSortOrder === 'asc') {
-            newSortOrder = 'desc';
-        }
-
-        const filter = document.getElementById('filter-input').value;
-        const perPage = document.querySelector('[name="per_page"]').value;
-
-        htmx.ajax('GET', `/tables/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`, {
-            target: '#tables-table',
-            swap: 'outerHTML'
-        });
-    });
-});
-</script>

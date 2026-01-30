@@ -52,9 +52,10 @@
     modal.show();
   }
 
-  async function testConnection(evt, id, name) {
+  async function testConnection(evt, id) {
     const btn = evt.target.closest('button');
     const originalHtml = btn.innerHTML;
+    const name = btn.dataset.endpointName || '';
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 

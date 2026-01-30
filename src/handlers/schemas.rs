@@ -295,6 +295,7 @@ pub async fn schemas_table(
         .collect();
 
     let tpl = SchemasTableTemplate {
+        ctx: build_ctx(&state),
         filter: query.filter.clone(),
         sort_by: query.sort_by.clone(),
         sort_order: query.sort_order.clone(),

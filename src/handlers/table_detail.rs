@@ -27,6 +27,7 @@ pub async fn table_detail(
         return Ok(Redirect::to(&target).into_response());
     }
     let active = active.unwrap();
+    let mut schema = schema;
 
     let mut rows = "-".to_string();
     let mut size = "-".to_string();
@@ -37,6 +38,29 @@ pub async fn table_detail(
 
     match connect_pg(&state, &active).await {
         Ok(pg) => {
+            if schema == "*" {
+                let schemas = sqlx::query_scalar::<_, String>(
+                    r#"
+                    SELECT n.nspname
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = $1 AND c.relkind IN ('r','p')
+                      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                    ORDER BY n.nspname
+                    "#,
+                )
+                .bind(&name)
+                .fetch_all(&pg)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+                if schemas.len() == 1 {
+                    schema = schemas[0].clone();
+                } else {
+                    return Err((axum::http::StatusCode::BAD_REQUEST, "Table name is ambiguous without schema".to_string()));
+                }
+            }
+
             match sqlx::query_as::<_, TableDetailDb>(
                 r#"
                 SELECT pg_total_relation_size(c.oid) as size_bytes,
@@ -68,7 +92,7 @@ pub async fn table_detail(
                 match sqlx::query(
                     r#"
                     SELECT n_dead_tup, n_live_tup
-                    FROM pg_stat_user_tables
+                    FROM pg_stat_all_tables
                     WHERE schemaname = $1 AND relname = $2
                     "#,
                 )

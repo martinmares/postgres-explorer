@@ -136,7 +136,7 @@ pub async fn select_endpoint(
 
 pub async fn update_endpoint(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    _jar: CookieJar,
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<UpdateEndpointForm>,
 ) -> Result<Response, (StatusCode, String)> {
@@ -180,7 +180,7 @@ pub async fn update_endpoint(
 
 pub async fn delete_endpoint(
     State(state): State<Arc<AppState>>,
-    jar: CookieJar,
+    _jar: CookieJar,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
     state

@@ -74,7 +74,7 @@
   <header>
     <nav>
       <a href="/" class="{% if nav == "dashboard" %}active{% endif %}">Dashboard</a>
-      <a href="/tables" class="{% if nav == "tables" %}active{% endif %}">Tables</a>
+      <a href="{% if ctx.base_path == "/" %}/tables/*/*{% else %}{{ ctx.base_path }}/tables/*/*{% endif %}" class="{% if nav == "tables" %}active{% endif %}">Tables</a>
       <a href="/tables/indices" class="{% if nav == "indices" %}active{% endif %}">Indices</a>
       <a href="/dev" class="{% if nav == "dev" %}active{% endif %}">Dev Console</a>
     </nav>

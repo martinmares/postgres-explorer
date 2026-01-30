@@ -4,7 +4,11 @@
 {% block page_title %}
 <nav aria-label="breadcrumb">
     <ol class="breadcrumb breadcrumb-dots my-0">
-        <li class="breadcrumb-item"><a href="/tables?filter={{ schema }}.*">{{ schema }}</a></li>
+        <li class="breadcrumb-item">
+            <a href="{% if ctx.base_path == "/" %}/tables/{{ schema }}/*{% else %}{{ ctx.base_path }}/tables/{{ schema }}/*{% endif %}">
+                {{ schema }}
+            </a>
+        </li>
         <li class="breadcrumb-item active">{{ name }}</li>
     </ol>
 </nav>

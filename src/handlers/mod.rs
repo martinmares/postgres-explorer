@@ -111,10 +111,16 @@ fn apply_connection_params(
     let mut params = Vec::new();
 
     // Aplikuj SSL mode
-    if let Some(mode) = ssl_mode {
-        if !mode.is_empty() {
-            params.push(format!("sslmode={}", mode));
+    let ssl_mode = ssl_mode.and_then(|m| {
+        let trimmed = m.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
         }
+    });
+    if let Some(mode) = ssl_mode {
+        params.push(format!("sslmode={}", urlencoding::encode(mode)));
     }
 
     // Pokud je insecure=true a není explicitní ssl mode, nastav require (bez verifikace)
@@ -125,8 +131,9 @@ fn apply_connection_params(
 
     // Aplikuj search_path
     if let Some(path) = search_path {
-        if !path.is_empty() {
-            params.push(format!("search_path={}", path));
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            params.push(format!("search_path={}", urlencoding::encode(trimmed)));
         }
     }
 

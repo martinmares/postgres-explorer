@@ -51,7 +51,8 @@
                 <div class="btn-list">
                     <button
                         class="btn btn-sm btn-icon btn-success"
-                        onclick="event.stopPropagation(); testConnection(event, {{ endpoint.id }}, '{{ endpoint.name }}')"
+                        data-endpoint-name="{{ endpoint.name }}"
+                        onclick="event.stopPropagation(); testConnection(event, {{ endpoint.id }})"
                         title="Test connection">
                         <i class="ti ti-plug-connected"></i>
                     </button>
@@ -76,7 +77,8 @@
                     </button>
                     <button
                         class="btn btn-sm btn-icon btn-ghost-danger"
-                        onclick="event.stopPropagation(); confirmDelete({{ endpoint.id }}, '{{ endpoint.name }}');"
+                        data-endpoint-name="{{ endpoint.name }}"
+                        onclick="event.stopPropagation(); confirmDelete({{ endpoint.id }}, this.dataset.endpointName);"
                         title="Delete">
                         <i class="ti ti-trash"></i>
                     </button>
