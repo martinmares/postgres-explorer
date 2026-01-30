@@ -52,6 +52,13 @@ fn default_sort_order() -> String {
     "desc".to_string()
 }
 
+fn cookie_schema_key(schema: &str) -> String {
+    let normalized = if schema.is_empty() { "*" } else { schema };
+    let encoded = urlencoding::encode(normalized);
+    // Cookie names are restrictive; replace '%' to keep it safe and deterministic.
+    encoded.replace('%', "_")
+}
+
 #[derive(sqlx::FromRow, Clone)]
 struct TableRowDb {
     schema: String,
@@ -75,16 +82,17 @@ pub async fn list_tables(
     }
     let active = active.unwrap();
 
-    // Načti filtr z cookie, pokud není v query
-    let filter_cookie_name = format!("tables_filter_{}", active.id);
-    let per_page_cookie_name = format!("tables_per_page_{}", active.id);
-
     // Rozlišuj, jestli filter přišel z URL (explicitní) nebo použij cookie
     let schema_from_url = !schema.is_empty();
     let filter_from_url = !filter.is_empty() && filter != "*";
 
     query.schema = if schema_from_url { schema } else { "*".to_string() };
     query.filter = if filter_from_url { filter } else { "*".to_string() };
+
+    // Načti filtr z cookie, pokud není v query
+    let schema_key = cookie_schema_key(&query.schema);
+    let filter_cookie_name = format!("tables_filter_{}_{}", schema_key, active.id);
+    let per_page_cookie_name = format!("tables_per_page_{}_{}", schema_key, active.id);
 
     if query.filter.ends_with(".map") {
         return Err((axum::http::StatusCode::NOT_FOUND, "Not found".to_string()));
@@ -512,8 +520,9 @@ pub async fn tables_table(
     };
 
     // Ulož filtr a per_page do cookies
-    let filter_cookie_name = format!("tables_filter_{}", active.id);
-    let per_page_cookie_name = format!("tables_per_page_{}", active.id);
+    let schema_key = cookie_schema_key(&query.schema);
+    let filter_cookie_name = format!("tables_filter_{}_{}", schema_key, active.id);
+    let per_page_cookie_name = format!("tables_per_page_{}_{}", schema_key, active.id);
 
     let mut jar = jar;
     let filter_cookie = Cookie::build((filter_cookie_name, query.filter.clone()))

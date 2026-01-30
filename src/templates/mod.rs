@@ -105,6 +105,28 @@ pub struct TableModalTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "table_data.html")]
+pub struct TableDataTemplate {
+    pub ctx: AppContext,
+    pub schema: String,
+    pub name: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub fk_meta: Vec<Option<FkMeta>>,
+    pub page: usize,
+    pub per_page: usize,
+    pub has_prev: bool,
+    pub has_next: bool,
+}
+
+#[derive(Clone)]
+pub struct FkMeta {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+}
+
+#[derive(Template)]
 #[template(path = "indices.html")]
 pub struct IndicesTemplate {
     pub ctx: AppContext,
@@ -271,4 +293,7 @@ pub struct TuningTemplate {
     pub over_indexed_tables: Vec<crate::handlers::tuning::OverIndexedTable>,
     pub fragmented_tables: Vec<crate::handlers::tuning::FragmentedTable>,
     pub fragmented_indexes: Vec<crate::handlers::tuning::FragmentedIndex>,
+    pub health_score: i64,
+    pub health_summary: Vec<crate::handlers::tuning::HealthIssue>,
+    pub base_path: String,
 }

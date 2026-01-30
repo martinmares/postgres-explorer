@@ -34,6 +34,11 @@
           <i class="ti ti-sort-ascending me-1"></i>Indexes
         </a>
       </li>
+      <li class="nav-item" role="presentation">
+        <a href="#tab-data" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab" tabindex="-1">
+          <i class="ti ti-table me-1"></i>Data
+        </a>
+      </li>
       {% if table_type == "partitioned table" %}
       <li class="nav-item" role="presentation">
         <a href="#tab-partitions" class="nav-link" data-bs-toggle="tab" aria-selected="false" role="tab" tabindex="-1">
@@ -206,6 +211,14 @@
         <div class="text-center py-5">
           <div class="spinner-border text-muted" role="status"></div>
           <div class="mt-2 text-muted">Loading indexes...</div>
+        </div>
+      </div>
+
+      <!-- Tab 3b: Data -->
+      <div class="tab-pane" id="tab-data" role="tabpanel">
+        <div class="text-center py-5">
+          <div class="spinner-border text-muted" role="status"></div>
+          <div class="mt-2 text-muted">Loading data...</div>
         </div>
       </div>
 
@@ -527,6 +540,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Lazy load tabs při kliknutí
 let columnsLoaded = false;
 let indexesLoaded = false;
+let dataLoaded = false;
 let partitionsLoaded = false;
 let triggersLoaded = false;
 let relationshipsLoaded = false;
@@ -556,6 +570,11 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
         .then(html => {
           document.getElementById('tab-indexes').innerHTML = html;
         });
+    }
+
+    if (target === '#tab-data' && !dataLoaded) {
+      dataLoaded = true;
+      loadTableData(1);
     }
 
     if (target === '#tab-partitions' && !partitionsLoaded) {
@@ -643,6 +662,112 @@ document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
     }
   });
 });
+
+function loadTableData(page) {
+  const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+  const url = basePath + '/tables/{{ schema }}/{{ name }}/data?page=' + page + '&per_page=50';
+  fetch(url)
+    .then(r => r.text())
+    .then(html => {
+      const target = document.getElementById('tab-data');
+      if (target) {
+        target.innerHTML = html;
+        initFkPreview();
+      }
+    });
+}
+
+let fkPreviewCache = new Map();
+let fkPreviewTimer = null;
+
+function initFkPreview() {
+  const container = document.getElementById('tab-data');
+  if (!container) return;
+
+  if (!document.getElementById('fk-preview-popover')) {
+    const pop = document.createElement('div');
+    pop.id = 'fk-preview-popover';
+    pop.style.position = 'fixed';
+    pop.style.zIndex = '10000';
+    pop.style.display = 'none';
+    pop.style.background = 'var(--tblr-bg-surface)';
+    pop.style.border = '1px solid var(--tblr-border-color)';
+    pop.style.borderRadius = '8px';
+    pop.style.padding = '8px';
+    pop.style.boxShadow = '0 10px 28px rgba(0,0,0,0.35)';
+    pop.style.maxWidth = '780px';
+    pop.style.minWidth = '480px';
+    document.body.appendChild(pop);
+  }
+
+  container.querySelectorAll('.fk-cell').forEach(el => {
+    if (el.dataset.bound) return;
+    el.dataset.bound = 'true';
+    el.addEventListener('mouseenter', function(e) {
+      clearTimeout(fkPreviewTimer);
+      const schema = el.dataset.fkSchema;
+      const table = el.dataset.fkTable;
+      const column = el.dataset.fkColumn;
+      const value = el.dataset.fkValue;
+      const key = `${schema}.${table}.${column}=${value}`;
+
+      const pop = document.getElementById('fk-preview-popover');
+      if (!pop) return;
+      pop.innerHTML = "<div class='text-muted small'>Loading…</div>";
+      pop.style.display = 'block';
+      pop.style.left = (e.clientX + 12) + 'px';
+      pop.style.top = (e.clientY + 12) + 'px';
+
+      if (fkPreviewCache.has(key)) {
+        pop.innerHTML = fkPreviewCache.get(key);
+        requestAnimationFrame(() => positionPopover(e, pop));
+        return;
+      }
+
+      const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+      const url = basePath + '/tables/{{ schema }}/{{ name }}/data/preview?schema=' +
+        encodeURIComponent(schema) + '&table=' + encodeURIComponent(table) +
+        '&column=' + encodeURIComponent(column) + '&value=' + encodeURIComponent(value);
+
+      fetch(url)
+        .then(r => r.text())
+        .then(html => {
+          fkPreviewCache.set(key, html);
+          pop.innerHTML = html;
+          requestAnimationFrame(() => positionPopover(e, pop));
+        })
+        .catch(() => {
+          pop.innerHTML = "<div class='text-muted small'>Preview unavailable</div>";
+          requestAnimationFrame(() => positionPopover(e, pop));
+        });
+    });
+
+    el.addEventListener('mouseleave', function() {
+      const pop = document.getElementById('fk-preview-popover');
+      if (!pop) return;
+      fkPreviewTimer = setTimeout(() => {
+        pop.style.display = 'none';
+      }, 200);
+    });
+  });
+}
+
+function positionPopover(evt, pop) {
+  const margin = 12;
+  const rect = pop.getBoundingClientRect();
+  let left = evt.clientX + margin;
+  let top = evt.clientY + margin;
+  if (left + rect.width > window.innerWidth - margin) {
+    left = window.innerWidth - rect.width - margin;
+  }
+  if (top + rect.height > window.innerHeight - margin) {
+    top = window.innerHeight - rect.height - margin;
+  }
+  if (left < margin) left = margin;
+  if (top < margin) top = margin;
+  pop.style.left = left + 'px';
+  pop.style.top = top + 'px';
+}
 
 function showIndexDDL(name, ddl) {
   document.getElementById('index-ddl-title').textContent = 'Index: ' + name;

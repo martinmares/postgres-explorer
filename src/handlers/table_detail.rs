@@ -5,9 +5,11 @@ use sqlx::Row;
 use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 use chrono::{DateTime, Utc};
+use serde_json::Value as JsonValue;
+use regex::Regex;
 
 use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
-use crate::templates::TableDetailTemplate;
+use crate::templates::{FkMeta, TableDataTemplate, TableDetailTemplate};
 use crate::utils::format::bytes_to_human;
 
 #[derive(sqlx::FromRow)]
@@ -166,6 +168,238 @@ pub async fn table_detail(
         .map(Html)
         .map(|h| h.into_response())
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(serde::Deserialize)]
+pub struct TableDataQuery {
+    #[serde(default = "default_page")]
+    pub page: usize,
+    #[serde(default = "default_per_page")]
+    pub per_page: usize,
+}
+
+fn default_page() -> usize {
+    1
+}
+
+fn default_per_page() -> usize {
+    50
+}
+
+fn is_safe_ident(value: &str) -> bool {
+    let re = Regex::new(r"^[A-Za-z0-9_]+$").unwrap();
+    re.is_match(value)
+}
+
+pub async fn table_data(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path((schema, name)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<TableDataQuery>,
+) -> Result<Response, (axum::http::StatusCode, String)> {
+    let active = get_active_endpoint(&state, &jar).await;
+    if active.is_none() {
+        return Err((axum::http::StatusCode::BAD_REQUEST, "No active endpoint".to_string()));
+    }
+    let active = active.unwrap();
+
+    if !is_safe_ident(&schema) || !is_safe_ident(&name) {
+        return Ok(Html("<div class='alert alert-danger'>Invalid table identifier.</div>".to_string()).into_response());
+    }
+
+    let page = if query.page == 0 { 1 } else { query.page };
+    let per_page = query.per_page.clamp(10, 500);
+    let offset = (page - 1) * per_page;
+
+    let mut columns: Vec<String> = Vec::new();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut fk_map: std::collections::HashMap<String, (String, String, String)> = std::collections::HashMap::new();
+    let mut fk_meta: Vec<Option<FkMeta>> = Vec::new();
+
+    match connect_pg(&state, &active).await {
+        Ok(pg) => {
+            let cols = sqlx::query(
+                r#"
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = $1 AND table_name = $2
+                ORDER BY ordinal_position
+                "#,
+            )
+            .bind(&schema)
+            .bind(&name)
+            .fetch_all(&pg)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            columns = cols
+                .into_iter()
+                .map(|r| r.get::<String, _>("column_name"))
+                .collect();
+
+            if !columns.is_empty() {
+                if let Ok(fk_rows) = sqlx::query(
+                    r#"
+                    SELECT
+                        kcu.column_name as column_name,
+                        ccu.table_schema as foreign_schema,
+                        ccu.table_name as foreign_table,
+                        ccu.column_name as foreign_column
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                     AND tc.constraint_schema = kcu.constraint_schema
+                    JOIN information_schema.constraint_column_usage ccu
+                      ON ccu.constraint_name = tc.constraint_name
+                     AND ccu.constraint_schema = tc.constraint_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                      AND tc.table_schema = $1
+                      AND tc.table_name = $2
+                    "#,
+                )
+                .bind(&schema)
+                .bind(&name)
+                .fetch_all(&pg)
+                .await
+                {
+                    for row in fk_rows {
+                        let col: String = row.get("column_name");
+                        let fs: String = row.get("foreign_schema");
+                        let ft: String = row.get("foreign_table");
+                        let fc: String = row.get("foreign_column");
+                        fk_map.insert(col, (fs, ft, fc));
+                    }
+                }
+            }
+
+            if !columns.is_empty() {
+                let sql = format!(
+                    "SELECT to_jsonb(t) as row FROM \"{}\".\"{}\" t LIMIT $1 OFFSET $2",
+                    schema, name
+                );
+                let data_rows = sqlx::query(&sql)
+                    .bind(per_page as i64)
+                    .bind(offset as i64)
+                    .fetch_all(&pg)
+                    .await
+                    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+                for row in data_rows {
+                    let json: JsonValue = row.get("row");
+                    let mut out = Vec::with_capacity(columns.len());
+                    for col in &columns {
+                        match json.get(col) {
+                            Some(JsonValue::Null) | None => out.push("".to_string()),
+                            Some(JsonValue::String(s)) => out.push(s.clone()),
+                            Some(v) => out.push(v.to_string()),
+                        }
+                    }
+                    rows.push(out);
+                }
+            }
+        }
+        Err(e) => {
+            return Ok(Html(format!("<div class='alert alert-danger'>Failed to connect: {}</div>", e)).into_response());
+        }
+    }
+
+    if !columns.is_empty() {
+        fk_meta = columns
+            .iter()
+            .map(|col| {
+                fk_map.get(col).map(|(fs, ft, fc)| FkMeta {
+                    schema: fs.clone(),
+                    table: ft.clone(),
+                    column: fc.clone(),
+                })
+            })
+            .collect();
+    }
+
+    let has_prev = page > 1;
+    let has_next = rows.len() == per_page;
+
+    let tpl = TableDataTemplate {
+        ctx: build_ctx_with_endpoint(&state, Some(&active)),
+        schema,
+        name,
+        columns,
+        rows,
+        fk_meta,
+        page,
+        per_page,
+        has_prev,
+        has_next,
+    };
+
+    tpl.render()
+        .map(Html)
+        .map(|h| h.into_response())
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(serde::Deserialize)]
+pub struct TableDataPreviewQuery {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+    pub value: String,
+}
+
+pub async fn table_data_preview(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    axum::extract::Query(query): axum::extract::Query<TableDataPreviewQuery>,
+) -> Result<Response, (axum::http::StatusCode, String)> {
+    let active = get_active_endpoint(&state, &jar).await;
+    if active.is_none() {
+        return Err((axum::http::StatusCode::BAD_REQUEST, "No active endpoint".to_string()));
+    }
+    let active = active.unwrap();
+
+    if !is_safe_ident(&query.schema) || !is_safe_ident(&query.table) || !is_safe_ident(&query.column) {
+        return Ok(Html("<div class='text-danger'>Invalid identifier.</div>".to_string()).into_response());
+    }
+
+    match connect_pg(&state, &active).await {
+        Ok(pg) => {
+            let sql = format!(
+                "SELECT to_jsonb(t) as row FROM \"{}\".\"{}\" t WHERE \"{}\"::text = $1 LIMIT 1",
+                query.schema, query.table, query.column
+            );
+            let row = sqlx::query(&sql)
+                .bind(&query.value)
+                .fetch_optional(&pg)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            if let Some(r) = row {
+                let json: JsonValue = r.get("row");
+                let mut html = String::new();
+                html.push_str("<div class='small fw-semibold mb-1'>");
+                html.push_str(&format!("{}.{}", query.schema, query.table));
+                html.push_str("</div><table class='table table-sm mb-0'><tbody>");
+                if let Some(obj) = json.as_object() {
+                    for (k, v) in obj.iter().take(8) {
+                        let val = match v {
+                            JsonValue::Null => "".to_string(),
+                            JsonValue::String(s) => s.clone(),
+                            _ => v.to_string(),
+                        };
+                        html.push_str(&format!(
+                            "<tr><td class='text-muted pe-2'>{}</td><td class='text-end text-truncate' style='max-width:180px'>{}</td></tr>",
+                            k, val
+                        ));
+                    }
+                }
+                html.push_str("</tbody></table>");
+                return Ok(Html(html).into_response());
+            }
+
+            Ok(Html("<div class='text-muted'>No matching row</div>".to_string()).into_response())
+        }
+        Err(e) => Ok(Html(format!("<div class='text-danger'>Failed to connect: {}</div>", e)).into_response()),
+    }
 }
 
 // Lazy load columns

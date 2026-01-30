@@ -71,6 +71,14 @@ async fn main() -> Result<()> {
             get(handlers::table_detail::table_indexes),
         )
         .route(
+            "/tables/{schema}/{table}/data",
+            get(handlers::table_detail::table_data),
+        )
+        .route(
+            "/tables/{schema}/{table}/data/preview",
+            get(handlers::table_detail::table_data_preview),
+        )
+        .route(
             "/tables/{schema}/{table}/partitions",
             get(handlers::table_detail::table_partitions),
         )
