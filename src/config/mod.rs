@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rand::RngCore;
+use rand::TryRngCore;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
