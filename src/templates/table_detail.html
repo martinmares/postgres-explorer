@@ -239,6 +239,164 @@
   </div>
 </div>
 
+<!-- Modal pro REINDEX single -->
+<div class="modal modal-blur fade" id="reindex-single-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-refresh me-2"></i>REINDEX Index</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Index:</strong> <code id="reindex-single-name"></code></p>
+        <div class="alert alert-warning">
+          <i class="ti ti-alert-triangle me-2"></i>
+          <strong>Warning:</strong> This operation will lock the table during execution.
+        </div>
+        <p>REINDEX rebuilds the index from scratch, which:</p>
+        <ul>
+          <li>Removes bloat and reclaims space</li>
+          <li>May improve query performance</li>
+          <li>Blocks concurrent writes to the table</li>
+        </ul>
+        <div id="reindex-single-result" class="mt-3" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="reindex-single-confirm">
+          <i class="ti ti-refresh me-1"></i>Run REINDEX
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pro REINDEX all -->
+<div class="modal modal-blur fade" id="reindex-all-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-refresh me-2"></i>REINDEX All Indexes</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Table:</strong> <code>{{ schema }}.{{ name }}</code></p>
+        <div class="alert alert-warning">
+          <i class="ti ti-alert-triangle me-2"></i>
+          <strong>Warning:</strong> This will REINDEX all indexes on the table and lock it during execution.
+        </div>
+        <p>This operation may take several minutes on large tables.</p>
+        <div id="reindex-all-result" class="mt-3" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning" id="reindex-all-confirm">
+          <i class="ti ti-refresh me-1"></i>Run REINDEX TABLE
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pro VACUUM -->
+<div class="modal modal-blur fade" id="vacuum-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-trash me-2"></i>VACUUM</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Table:</strong> <code>{{ schema }}.{{ name }}</code></p>
+        <div class="alert alert-info">
+          <i class="ti ti-info-circle me-2"></i>
+          VACUUM is a non-blocking operation that reclaims space from dead tuples.
+        </div>
+        <p>This operation:</p>
+        <ul>
+          <li>Marks dead tuple space as reusable</li>
+          <li>Does not shrink table files</li>
+          <li>Runs concurrently with normal operations</li>
+        </ul>
+        <div id="vacuum-result" class="mt-3" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="vacuum-confirm">
+          <i class="ti ti-trash me-1"></i>Run VACUUM
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pro VACUUM FULL -->
+<div class="modal modal-blur fade" id="vacuum-full-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="ti ti-trash-x me-2"></i>VACUUM FULL - Destructive Operation</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Table:</strong> <code>{{ schema }}.{{ name }}</code></p>
+        <div class="alert alert-danger">
+          <i class="ti ti-alert-triangle me-2"></i>
+          <strong>DANGER:</strong> This operation locks the entire table and can take a VERY long time!
+        </div>
+        <p><strong>What VACUUM FULL does:</strong></p>
+        <ul>
+          <li>Completely rebuilds the table</li>
+          <li>Reclaims ALL bloat and shrinks files</li>
+          <li><strong>BLOCKS all reads and writes</strong></li>
+          <li>May take hours on large tables</li>
+          <li>Requires free disk space (2x table size)</li>
+        </ul>
+        <p class="text-danger"><strong>Only use this during maintenance windows!</strong></p>
+        <div id="vacuum-full-result" class="mt-3" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="vacuum-full-confirm">
+          <i class="ti ti-trash-x me-1"></i>I Understand, Run VACUUM FULL
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pro ANALYZE -->
+<div class="modal modal-blur fade" id="analyze-table-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="ti ti-chart-bar me-2"></i>ANALYZE Table</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Table:</strong> <code>{{ schema }}.{{ name }}</code></p>
+        <div class="alert alert-info">
+          <i class="ti ti-info-circle me-2"></i>
+          ANALYZE updates table statistics for the query planner. This is a safe, read-only operation.
+        </div>
+        <p>This helps PostgreSQL:</p>
+        <ul>
+          <li>Choose optimal query plans</li>
+          <li>Use indexes effectively</li>
+          <li>Estimate result set sizes accurately</li>
+        </ul>
+        <div id="analyze-table-result" class="mt-3" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-info" id="analyze-table-confirm">
+          <i class="ti ti-chart-bar me-1"></i>Run ANALYZE
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Lazy load tabs při kliknutí
 let columnsLoaded = false;
@@ -341,40 +499,61 @@ function showTriggerDDL(name, ddl) {
   new bootstrap.Modal(document.getElementById('trigger-ddl-modal')).show();
 }
 
+let currentReindexSchema = '';
+let currentReindexIndex = '';
+
 function reindexSingle(schema, indexName) {
-  if (!confirm('REINDEX will lock the table. Continue?')) return;
+  currentReindexSchema = schema;
+  currentReindexIndex = indexName;
+  document.getElementById('reindex-single-name').textContent = schema + '.' + indexName;
+  document.getElementById('reindex-single-result').style.display = 'none';
+  document.getElementById('reindex-single-confirm').disabled = false;
+  new bootstrap.Modal(document.getElementById('reindex-single-modal')).show();
+}
 
+document.getElementById('reindex-single-confirm').addEventListener('click', function() {
   const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
-  const btn = event.target.closest('button');
+  const btn = this;
+  const resultDiv = document.getElementById('reindex-single-result');
   const origHtml = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
-  fetch(basePath + '/maintenance/reindex-index/' + encodeURIComponent(schema) + '/' + encodeURIComponent(indexName), { method: 'POST' })
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+
+  fetch(basePath + '/maintenance/reindex-index/' + encodeURIComponent(currentReindexSchema) + '/' + encodeURIComponent(currentReindexIndex), { method: 'POST' })
     .then(r => r.json())
     .then(data => {
       if (data.success) {
-        alert('REINDEX completed successfully!');
-        location.reload();
+        resultDiv.innerHTML = '<div class="alert alert-success"><i class="ti ti-check me-2"></i>REINDEX completed successfully!</div>';
+        resultDiv.style.display = 'block';
+        setTimeout(() => location.reload(), 1500);
       } else {
-        alert('REINDEX failed: ' + (data.error || 'Unknown error'));
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + (data.error || 'Unknown error') + '</div>';
+        resultDiv.style.display = 'block';
         btn.disabled = false;
         btn.innerHTML = origHtml;
       }
     })
     .catch(err => {
-      alert('Error: ' + err.message);
+      resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + err.message + '</div>';
+      resultDiv.style.display = 'block';
       btn.disabled = false;
       btn.innerHTML = origHtml;
     });
-}
+});
 
 function reindexAllIndexes() {
-  if (!confirm('REINDEX all indexes will lock the table for the duration. This may take several minutes. Continue?')) return;
+  document.getElementById('reindex-all-result').style.display = 'none';
+  document.getElementById('reindex-all-confirm').disabled = false;
+  new bootstrap.Modal(document.getElementById('reindex-all-modal')).show();
+}
 
+document.getElementById('reindex-all-confirm').addEventListener('click', function() {
   const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
-  const btn = event.target;
+  const btn = this;
+  const resultDiv = document.getElementById('reindex-all-result');
   const origHtml = btn.innerHTML;
+
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
 
@@ -382,61 +561,78 @@ function reindexAllIndexes() {
     .then(r => r.json())
     .then(data => {
       if (data.success) {
-        alert('REINDEX TABLE completed successfully!');
-        location.reload();
+        resultDiv.innerHTML = '<div class="alert alert-success"><i class="ti ti-check me-2"></i>REINDEX TABLE completed successfully!</div>';
+        resultDiv.style.display = 'block';
+        setTimeout(() => location.reload(), 1500);
       } else {
-        alert('REINDEX failed: ' + (data.error || 'Unknown error'));
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + (data.error || 'Unknown error') + '</div>';
+        resultDiv.style.display = 'block';
         btn.disabled = false;
         btn.innerHTML = origHtml;
       }
     })
     .catch(err => {
-      alert('Error: ' + err.message);
+      resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + err.message + '</div>';
+      resultDiv.style.display = 'block';
       btn.disabled = false;
       btn.innerHTML = origHtml;
     });
-}
+});
 
 function runVacuum(schema, table) {
-  if (!confirm('Run VACUUM on ' + schema + '.' + table + '? This is non-blocking but may take time.')) return;
-  runMaintenanceOp('vacuum', schema, table);
+  document.getElementById('vacuum-result').style.display = 'none';
+  document.getElementById('vacuum-confirm').disabled = false;
+  new bootstrap.Modal(document.getElementById('vacuum-modal')).show();
 }
 
 function runVacuumFull(schema, table) {
-  if (!confirm('⚠️ WARNING: VACUUM FULL will lock the entire table!\n\nThis operation:\n- Completely rebuilds the table\n- Reclaims all bloat\n- Can take a LONG time on large tables\n- BLOCKS all reads and writes\n\nContinue?')) return;
-  runMaintenanceOp('vacuum-full', schema, table);
+  document.getElementById('vacuum-full-result').style.display = 'none';
+  document.getElementById('vacuum-full-confirm').disabled = false;
+  new bootstrap.Modal(document.getElementById('vacuum-full-modal')).show();
 }
 
 function runAnalyzeTable(schema, table) {
-  if (!confirm('Run ANALYZE on ' + schema + '.' + table + '?')) return;
-  runMaintenanceOp('analyze', schema, table);
+  document.getElementById('analyze-table-result').style.display = 'none';
+  document.getElementById('analyze-table-confirm').disabled = false;
+  new bootstrap.Modal(document.getElementById('analyze-table-modal')).show();
 }
 
-function runMaintenanceOp(operation, schema, table) {
-  const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
-  const btn = event.target.closest('button');
-  const origHtml = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+function setupMaintenanceModal(modalId, operation) {
+  document.getElementById(modalId + '-confirm').addEventListener('click', function() {
+    const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+    const btn = this;
+    const resultDiv = document.getElementById(modalId + '-result');
+    const origHtml = btn.innerHTML;
 
-  fetch(basePath + '/maintenance/' + operation + '/' + encodeURIComponent(schema) + '/' + encodeURIComponent(table), { method: 'POST' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.success) {
-        alert(operation.toUpperCase() + ' completed successfully!');
-        location.reload();
-      } else {
-        alert(operation.toUpperCase() + ' failed: ' + (data.error || 'Unknown error'));
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+
+    fetch(basePath + '/maintenance/' + operation + '/{{ schema }}/{{ name }}', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          resultDiv.innerHTML = '<div class="alert alert-success"><i class="ti ti-check me-2"></i>' + operation.toUpperCase().replace('-', ' ') + ' completed successfully!</div>';
+          resultDiv.style.display = 'block';
+          setTimeout(() => location.reload(), 1500);
+        } else {
+          resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + (data.error || 'Unknown error') + '</div>';
+          resultDiv.style.display = 'block';
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      })
+      .catch(err => {
+        resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>' + err.message + '</div>';
+        resultDiv.style.display = 'block';
         btn.disabled = false;
         btn.innerHTML = origHtml;
-      }
-    })
-    .catch(err => {
-      alert('Error: ' + err.message);
-      btn.disabled = false;
-      btn.innerHTML = origHtml;
-    });
+      });
+  });
 }
+
+setupMaintenanceModal('vacuum', 'vacuum');
+setupMaintenanceModal('vacuum-full', 'vacuum-full');
+setupMaintenanceModal('analyze-table', 'analyze');
 </script>
 
 {% endblock %}
