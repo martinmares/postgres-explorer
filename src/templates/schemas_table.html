@@ -1,5 +1,11 @@
 <div id="schemas-table">
-    <div class="card">
+    <div class="card" data-fetching="{% if is_fetching %}true{% else %}false{% endif %}">
+        {% if is_fetching %}
+        <div class="card-alert alert alert-info">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Fetching data…
+        </div>
+        {% endif %}
         <div class="table-responsive">
             <table class="table table-vcenter card-table table-hover">
                 <thead>

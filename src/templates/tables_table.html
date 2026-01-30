@@ -1,4 +1,11 @@
-<div class="card" data-sort-by="{{ sort_by }}" data-sort-order="{{ sort_order }}">
+<div class="card" data-sort-by="{{ sort_by }}" data-sort-order="{{ sort_order }}" data-fetching="{% if is_fetching %}true{% else %}false{% endif %}">
+        <script type="application/json" id="tables-schemas-json">{{ schemas_json|safe }}</script>
+        {% if is_fetching %}
+        <div class="card-alert alert alert-info">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Fetching data…
+        </div>
+        {% endif %}
         <div class="table-responsive">
             <table class="table table-vcenter card-table table-hover">
                 <thead>

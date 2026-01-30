@@ -52,7 +52,13 @@
 <div class="row row-cards">
     <div class="col-12">
         <div id="schemas-table">
-            <div class="card">
+            <div class="card" data-fetching="{% if is_fetching %}true{% else %}false{% endif %}">
+                {% if is_fetching %}
+                <div class="card-alert alert alert-info">
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Fetching data…
+                </div>
+                {% endif %}
                 <div class="table-responsive">
                     <table class="table table-vcenter card-table table-hover">
                         <thead>
@@ -234,7 +240,12 @@ function loadSchemas(url) {
     if (!target) return;
     fetch(url, { method: 'GET' })
         .then(r => r.text())
-        .then(html => { target.innerHTML = html; })
+        .then(html => {
+            target.innerHTML = html;
+            if (target.querySelector('[data-fetching="true"]')) {
+                setTimeout(() => loadSchemas(url), 1000);
+            }
+        })
         .catch(err => { target.innerHTML = `<div class="text-danger">Failed to load schemas: ${err}</div>`; });
 }
 
@@ -245,7 +256,8 @@ function handleSchemasFilter(input) {
         const perPage = document.getElementById('per-page-select').value;
         const sortBy = document.querySelector('[name="sort_by"]').value || 'name';
         const sortOrder = document.querySelector('[name="sort_order"]').value || 'asc';
-        loadSchemas(`/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
+        const base = window.__BASE_PATH__ || '';
+        loadSchemas(`${base}/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
     }, 400);
 }
 
@@ -254,7 +266,8 @@ function applySchemasPerPageChange() {
     const perPage = document.getElementById('per-page-select').value;
     const sortBy = document.querySelector('[name="sort_by"]').value || 'name';
     const sortOrder = document.querySelector('[name="sort_order"]').value || 'asc';
-    loadSchemas(`/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
+    const base = window.__BASE_PATH__ || '';
+    loadSchemas(`${base}/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
 }
 
 // Sort headers use fetch as well
@@ -275,7 +288,8 @@ document.querySelectorAll('.sortable').forEach(th => {
 
         const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
         const perPage = document.getElementById('per-page-select').value;
-        loadSchemas(`/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`);
+        const base = window.__BASE_PATH__ || '';
+        loadSchemas(`${base}/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${newSortOrder}`);
     });
 });
 
@@ -289,6 +303,18 @@ document.addEventListener('click', function(evt) {
     evt.preventDefault();
     loadSchemas(url);
 });
+
+{
+    const target = document.getElementById('schemas-table');
+    if (target && target.querySelector('[data-fetching="true"]')) {
+        const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
+        const perPage = document.getElementById('per-page-select').value;
+        const sortBy = document.querySelector('[name="sort_by"]').value || 'name';
+        const sortOrder = document.querySelector('[name="sort_order"]').value || 'asc';
+        const base = window.__BASE_PATH__ || '';
+        loadSchemas(`${base}/schemas/table?filter=${encodeURIComponent(filter)}&page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`);
+    }
+}
 </script>
 
 {% endblock %}

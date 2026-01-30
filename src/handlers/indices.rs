@@ -6,13 +6,14 @@ use axum_extra::extract::CookieJar;
 use serde::Deserialize;
 use sqlx::Row;
 
-use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState, CACHE_TTL, CacheEntry};
 use crate::templates::{IndexRow, IndicesTemplate, IndicesTableTemplate};
 use crate::utils::format::bytes_to_human;
 use crate::utils::filter::parse_pattern_expression;
+use std::time::Instant;
 
-#[derive(sqlx::FromRow)]
-struct IndexRowDb {
+#[derive(sqlx::FromRow, Clone)]
+pub struct IndexRowDb {
     schema: String,
     table_name: String,
     index_name: String,
@@ -48,6 +49,97 @@ fn default_per_page() -> usize { 50 }
 fn default_sort_by() -> String { "size".to_string() }
 fn default_sort_order() -> String { "desc".to_string() }
 
+async fn fetch_indices_from_db(
+    state: &Arc<AppState>,
+    active: &crate::db::models::Endpoint,
+) -> Result<Vec<IndexRowDb>, String> {
+    match connect_pg(state, active).await {
+        Ok(pg) => match sqlx::query_as::<_, IndexRowDb>(
+            r#"
+            SELECT n.nspname as schema,
+                   t.relname as table_name,
+                   i.relname as index_name,
+                   pg_relation_size(i.oid) as size_bytes,
+                   s.idx_scan as scans,
+                   s.idx_tup_read as idx_tup_read,
+                   s.idx_tup_fetch as idx_tup_fetch
+            FROM pg_class t
+            JOIN pg_index ix ON t.oid = ix.indrelid
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.oid
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY size_bytes DESC
+            "#,
+        )
+        .fetch_all(&pg)
+        .await
+        {
+            Ok(rows) => Ok(rows),
+            Err(err) => Err(format!("Failed to load indices: {}", err)),
+        },
+        Err(err) => Err(format!("Failed to connect to Postgres: {}", err)),
+    }
+}
+
+async fn get_cached_indices(
+    state: &Arc<AppState>,
+    active: &crate::db::models::Endpoint,
+) -> (Vec<IndexRowDb>, bool) {
+    let now = Instant::now();
+    let mut should_refresh = false;
+    let (data, fetching) = {
+        let mut cache = state.indices_cache.write().await;
+        match cache.get_mut(&active.id) {
+            Some(entry) => {
+                let stale = now.duration_since(entry.fetched_at) > CACHE_TTL;
+                if stale && !entry.fetching {
+                    entry.fetching = true;
+                    should_refresh = true;
+                }
+                tracing::debug!(
+                    "indices cache hit id={} stale={} fetching={}",
+                    active.id,
+                    stale,
+                    entry.fetching
+                );
+                (entry.data.clone(), entry.fetching)
+            }
+            None => {
+                cache.insert(
+                    active.id,
+                    CacheEntry {
+                        data: Vec::new(),
+                        fetched_at: now,
+                        fetching: true,
+                    },
+                );
+                should_refresh = true;
+                tracing::debug!("indices cache miss id={}, scheduling refresh", active.id);
+                (Vec::new(), true)
+            }
+        }
+    };
+
+    if should_refresh {
+        let state = state.clone();
+        let active = active.clone();
+        tokio::spawn(async move {
+            let result = fetch_indices_from_db(&state, &active).await;
+            let mut cache = state.indices_cache.write().await;
+            if let Some(entry) = cache.get_mut(&active.id) {
+                if let Ok(rows) = result {
+                    entry.data = rows;
+                    entry.fetched_at = Instant::now();
+                }
+                entry.fetching = false;
+            }
+        });
+    }
+
+    (data, fetching)
+}
+
 fn format_number(n: i64) -> String {
     let s = n.abs().to_string();
     let mut out = String::new();
@@ -79,59 +171,28 @@ pub async fn list_indices(
     }
     let active = active.unwrap();
 
-    let mut indices: Vec<IndexRow> = match connect_pg(&state, &active).await {
-        Ok(pg) => match sqlx::query_as::<_, IndexRowDb>(
-            r#"
-            SELECT n.nspname as schema,
-                   t.relname as table_name,
-                   i.relname as index_name,
-                   pg_relation_size(i.oid) as size_bytes,
-                   s.idx_scan as scans,
-                   s.idx_tup_read as idx_tup_read,
-                   s.idx_tup_fetch as idx_tup_fetch
-            FROM pg_class t
-            JOIN pg_index ix ON t.oid = ix.indrelid
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.oid
-            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-            ORDER BY size_bytes DESC
-            "#,
-        )
-        .fetch_all(&pg)
-        .await
-        {
-            Ok(rows) => rows
-                .into_iter()
-                .map(|r| {
-                    let scans = r.scans.unwrap_or(0);
-                    let idx_tup_read = r.idx_tup_read.unwrap_or(0);
-                    let idx_tup_fetch = r.idx_tup_fetch.unwrap_or(0);
-                    IndexRow {
-                        schema: r.schema,
-                        table: r.table_name,
-                        name: r.index_name,
-                        size: bytes_to_human(r.size_bytes),
-                        size_bytes: r.size_bytes,
-                        scans: format_number(scans),
-                        scans_count: scans,
-                        idx_tup_read: format_number(idx_tup_read),
-                        idx_tup_read_count: idx_tup_read,
-                        idx_tup_fetch: format_number(idx_tup_fetch),
-                        idx_tup_fetch_count: idx_tup_fetch,
-                    }
-                })
-                .collect(),
-            Err(err) => {
-                tracing::warn!("Failed to load indices: {}", err);
-                Vec::new()
+    let (index_rows, is_fetching) = get_cached_indices(&state, &active).await;
+    let mut indices: Vec<IndexRow> = index_rows
+        .into_iter()
+        .map(|r| {
+            let scans = r.scans.unwrap_or(0);
+            let idx_tup_read = r.idx_tup_read.unwrap_or(0);
+            let idx_tup_fetch = r.idx_tup_fetch.unwrap_or(0);
+            IndexRow {
+                schema: r.schema,
+                table: r.table_name,
+                name: r.index_name,
+                size: bytes_to_human(r.size_bytes),
+                size_bytes: r.size_bytes,
+                scans: format_number(scans),
+                scans_count: scans,
+                idx_tup_read: format_number(idx_tup_read),
+                idx_tup_read_count: idx_tup_read,
+                idx_tup_fetch: format_number(idx_tup_fetch),
+                idx_tup_fetch_count: idx_tup_fetch,
             }
-        },
-        Err(err) => {
-            tracing::warn!("Failed to connect to Postgres: {}", err);
-            Vec::new()
-        }
-    };
+        })
+        .collect();
 
     // Build schema list
     let mut schemas: Vec<String> = indices.iter().map(|i| i.schema.clone()).collect();
@@ -199,6 +260,7 @@ pub async fn list_indices(
         showing_end: end,
         schema: query.schema.clone(),
         table: query.table.clone(),
+        is_fetching,
     };
     let initial_table_html = table_tpl.render().unwrap_or_else(|_| "<div>Error rendering table</div>".to_string());
 
@@ -248,59 +310,28 @@ pub async fn indices_table(
     }
     let active = active.unwrap();
 
-    let mut indices: Vec<IndexRow> = match connect_pg(&state, &active).await {
-        Ok(pg) => match sqlx::query_as::<_, IndexRowDb>(
-            r#"
-            SELECT n.nspname as schema,
-                   t.relname as table_name,
-                   i.relname as index_name,
-                   pg_relation_size(i.oid) as size_bytes,
-                   s.idx_scan as scans,
-                   s.idx_tup_read as idx_tup_read,
-                   s.idx_tup_fetch as idx_tup_fetch
-            FROM pg_class t
-            JOIN pg_index ix ON t.oid = ix.indrelid
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.oid
-            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-            ORDER BY size_bytes DESC
-            "#,
-        )
-        .fetch_all(&pg)
-        .await
-        {
-            Ok(rows) => rows
-                .into_iter()
-                .map(|r| {
-                    let scans = r.scans.unwrap_or(0);
-                    let idx_tup_read = r.idx_tup_read.unwrap_or(0);
-                    let idx_tup_fetch = r.idx_tup_fetch.unwrap_or(0);
-                    IndexRow {
-                        schema: r.schema,
-                        table: r.table_name,
-                        name: r.index_name,
-                        size: bytes_to_human(r.size_bytes),
-                        size_bytes: r.size_bytes,
-                        scans: format_number(scans),
-                        scans_count: scans,
-                        idx_tup_read: format_number(idx_tup_read),
-                        idx_tup_read_count: idx_tup_read,
-                        idx_tup_fetch: format_number(idx_tup_fetch),
-                        idx_tup_fetch_count: idx_tup_fetch,
-                    }
-                })
-                .collect(),
-            Err(err) => {
-                tracing::warn!("Failed to load indices: {}", err);
-                Vec::new()
+    let (index_rows, is_fetching) = get_cached_indices(&state, &active).await;
+    let mut indices: Vec<IndexRow> = index_rows
+        .into_iter()
+        .map(|r| {
+            let scans = r.scans.unwrap_or(0);
+            let idx_tup_read = r.idx_tup_read.unwrap_or(0);
+            let idx_tup_fetch = r.idx_tup_fetch.unwrap_or(0);
+            IndexRow {
+                schema: r.schema,
+                table: r.table_name,
+                name: r.index_name,
+                size: bytes_to_human(r.size_bytes),
+                size_bytes: r.size_bytes,
+                scans: format_number(scans),
+                scans_count: scans,
+                idx_tup_read: format_number(idx_tup_read),
+                idx_tup_read_count: idx_tup_read,
+                idx_tup_fetch: format_number(idx_tup_fetch),
+                idx_tup_fetch_count: idx_tup_fetch,
             }
-        },
-        Err(err) => {
-            tracing::warn!("Failed to connect to Postgres: {}", err);
-            Vec::new()
-        }
-    };
+        })
+        .collect();
 
     if query.schema != "*" {
         indices.retain(|i| i.schema == query.schema);
@@ -350,6 +381,7 @@ pub async fn indices_table(
         total_pages,
         showing_start: if filtered_count == 0 { 0 } else { start + 1 },
         showing_end: end,
+        is_fetching,
     };
 
     tpl.render()
@@ -371,26 +403,14 @@ pub async fn indices_tables(
 
     let mut tables: Vec<String> = Vec::new();
     if query.schema != "*" {
-        if let Ok(pg) = connect_pg(&state, &active).await {
-            if let Ok(rows) = sqlx::query(
-                r#"
-                SELECT DISTINCT t.relname as table_name
-                FROM pg_class t
-                JOIN pg_index ix ON t.oid = ix.indrelid
-                JOIN pg_namespace n ON n.oid = t.relnamespace
-                WHERE n.nspname = $1
-                ORDER BY t.relname
-                "#,
-            )
-            .bind(&query.schema)
-            .fetch_all(&pg)
-            .await
-            {
-                for row in rows {
-                    tables.push(row.get::<String, _>("table_name"));
-                }
+        let (rows, _) = get_cached_indices(&state, &active).await;
+        for r in rows {
+            if r.schema == query.schema {
+                tables.push(r.table_name);
             }
         }
+        tables.sort();
+        tables.dedup();
     }
 
     let payload = serde_json::json!({ "tables": tables });

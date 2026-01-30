@@ -47,6 +47,7 @@ pub struct TablesTemplate {
     pub tables: Vec<TableRow>,
     pub schemas: Vec<String>,
     pub initial_table_html: String,
+    pub is_fetching: bool,
 }
 
 #[derive(Template)]
@@ -65,6 +66,8 @@ pub struct TablesTableTemplate {
     pub showing_start: usize,
     pub showing_end: usize,
     pub tables: Vec<TableRow>,
+    pub is_fetching: bool,
+    pub schemas_json: String,
 }
 
 #[derive(Template)]
@@ -172,6 +175,7 @@ pub struct IndicesTableTemplate {
     pub total_pages: usize,
     pub showing_start: usize,
     pub showing_end: usize,
+    pub is_fetching: bool,
 }
 
 #[derive(Template)]
@@ -196,6 +200,7 @@ pub struct SchemasTemplate {
     pub total_pages: usize,
     pub showing_start: usize,
     pub showing_end: usize,
+    pub is_fetching: bool,
     pub schemas: Vec<SchemaRow>,
 }
 
@@ -213,6 +218,7 @@ pub struct SchemasTableTemplate {
     pub total_pages: usize,
     pub showing_start: usize,
     pub showing_end: usize,
+    pub is_fetching: bool,
     pub schemas: Vec<SchemaRow>,
 }
 

@@ -121,7 +121,12 @@ function loadIndices(url) {
   if (!target) return;
   fetch(url, { method: 'GET' })
     .then(res => res.text())
-    .then(html => { target.innerHTML = html; })
+    .then(html => {
+      target.innerHTML = html;
+      if (target.querySelector('[data-fetching="true"]')) {
+        setTimeout(() => loadIndices(url), 1000);
+      }
+    })
     .catch(err => { target.innerHTML = `<div class="text-danger">Failed to load indices: ${err}</div>`; });
 }
 
@@ -242,5 +247,12 @@ document.getElementById('reindex-confirm')?.addEventListener('click', function()
   const tableSelect = document.getElementById('table-select');
   if (tableSelect) tableSelect.value = '{{ selected_table }}';
 })();
+
+{
+  const target = document.getElementById('indices-table');
+  if (target && target.querySelector('[data-fetching="true"]')) {
+    loadIndices(buildIndicesUrl(1));
+  }
+}
 </script>
 {% endblock %}

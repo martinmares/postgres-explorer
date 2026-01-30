@@ -3,8 +3,9 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use askama::Template;
 use serde::Deserialize;
 use std::sync::Arc;
+use std::time::Instant;
 
-use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState, CACHE_TTL, CacheEntry};
 use crate::templates::{TableModalTemplate, TableRow, TablesTemplate, TablesTableTemplate};
 use crate::utils::filter::parse_pattern_expression;
 use crate::utils::format::bytes_to_human;
@@ -59,8 +60,19 @@ fn cookie_schema_key(schema: &str) -> String {
     encoded.replace('%', "_")
 }
 
+fn has_pattern_ops(value: &str) -> bool {
+    let v = value;
+    v.contains('*')
+        || v.contains('?')
+        || v.contains(',')
+        || v.contains(" OR ")
+        || v.contains(" AND ")
+        || v.contains(" - ")
+        || v.contains(" NOT ")
+}
+
 #[derive(sqlx::FromRow, Clone)]
-struct TableRowDb {
+pub struct TableRowDb {
     schema: String,
     name: String,
     size_bytes: i64,
@@ -69,12 +81,117 @@ struct TableRowDb {
     partitions: Option<Vec<String>>,
 }
 
+async fn fetch_tables_from_db(
+    state: &Arc<AppState>,
+    active: &crate::db::models::Endpoint,
+) -> Result<Vec<TableRowDb>, String> {
+    let tables_sql = r#"
+            WITH table_hierarchy AS (
+                SELECT
+                    c.oid,
+                    n.nspname as schema,
+                    c.relname as name,
+                    COALESCE(parent.relname, c.relname) as parent_name,
+                    COALESCE(parent_ns.nspname, n.nspname) as parent_schema,
+                    pg_total_relation_size(c.oid) as size_bytes,
+                    COALESCE(NULLIF(s.n_live_tup, 0), NULLIF(c.reltuples, 0), 0)::bigint as row_estimate,
+                    (SELECT count(*) FROM pg_index i WHERE i.indrelid = c.oid) as index_count,
+                    CASE WHEN parent.oid IS NOT NULL THEN true ELSE false END as is_partition
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
+                LEFT JOIN pg_class parent ON parent.oid = i.inhparent
+                LEFT JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
+                LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
+                WHERE c.relkind IN ('r', 'p')
+                  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            )
+            SELECT
+                parent_schema as schema,
+                parent_name as name,
+                SUM(size_bytes)::bigint as size_bytes,
+                SUM(row_estimate)::bigint as row_estimate,
+                SUM(index_count)::bigint as index_count,
+                array_agg(name ORDER BY name) FILTER (WHERE is_partition) as partitions
+            FROM table_hierarchy
+            GROUP BY parent_schema, parent_name
+            ORDER BY size_bytes DESC
+            "#;
+
+    match connect_pg(state, active).await {
+        Ok(pg) => match sqlx::query_as::<_, TableRowDb>(tables_sql).fetch_all(&pg).await {
+            Ok(rows) => Ok(rows),
+            Err(err) => Err(format!("Failed to load tables: {}", err)),
+        },
+        Err(err) => Err(format!("Failed to connect to Postgres: {}", err)),
+    }
+}
+
+async fn get_cached_tables(
+    state: &Arc<AppState>,
+    active: &crate::db::models::Endpoint,
+) -> (Vec<TableRowDb>, bool) {
+    let now = Instant::now();
+    let mut should_refresh = false;
+    let (data, fetching) = {
+        let mut cache = state.tables_cache.write().await;
+        match cache.get_mut(&active.id) {
+            Some(entry) => {
+                let stale = now.duration_since(entry.fetched_at) > CACHE_TTL;
+                if stale && !entry.fetching {
+                    entry.fetching = true;
+                    should_refresh = true;
+                }
+                tracing::debug!(
+                    "tables cache hit id={} stale={} fetching={}",
+                    active.id,
+                    stale,
+                    entry.fetching
+                );
+                (entry.data.clone(), entry.fetching)
+            }
+            None => {
+                cache.insert(
+                    active.id,
+                    CacheEntry {
+                        data: Vec::new(),
+                        fetched_at: now,
+                        fetching: true,
+                    },
+                );
+                should_refresh = true;
+                tracing::debug!("tables cache miss id={}, scheduling refresh", active.id);
+                (Vec::new(), true)
+            }
+        }
+    };
+
+    if should_refresh {
+        let state = state.clone();
+        let active = active.clone();
+        tokio::spawn(async move {
+            let result = fetch_tables_from_db(&state, &active).await;
+            let mut cache = state.tables_cache.write().await;
+            if let Some(entry) = cache.get_mut(&active.id) {
+                if let Ok(rows) = result {
+                    entry.data = rows;
+                    entry.fetched_at = Instant::now();
+                }
+                entry.fetching = false;
+            }
+        });
+    }
+
+    (data, fetching)
+}
+
 pub async fn list_tables(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
     Path((schema, filter)): Path<(String, String)>,
     Query(mut query): Query<TablesQuery>,
 ) -> Result<Response, (axum::http::StatusCode, String)> {
+    let overall_start = Instant::now();
     let active = get_active_endpoint(&state, &jar).await;
     if active.is_none() {
         let target = base_path_url(&state, "/endpoints");
@@ -113,59 +230,27 @@ pub async fn list_tables(
         }
     }
 
-    let tables_sql = r#"
-            WITH table_hierarchy AS (
-                SELECT
-                    c.oid,
-                    n.nspname as schema,
-                    c.relname as name,
-                    COALESCE(parent.relname, c.relname) as parent_name,
-                    COALESCE(parent_ns.nspname, n.nspname) as parent_schema,
-                    pg_total_relation_size(c.oid) as size_bytes,
-                    COALESCE(NULLIF(s.n_live_tup, 0), NULLIF(c.reltuples, 0), 0)::bigint as row_estimate,
-                    (SELECT count(*) FROM pg_index i WHERE i.indrelid = c.oid) as index_count,
-                    CASE WHEN parent.oid IS NOT NULL THEN true ELSE false END as is_partition
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
-                LEFT JOIN pg_class parent ON parent.oid = i.inhparent
-                LEFT JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
-                LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
-                WHERE c.relkind IN ('r', 'p')
-                  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-            )
-            SELECT
-                parent_schema as schema,
-                parent_name as name,
-                SUM(size_bytes)::bigint as size_bytes,
-                SUM(row_estimate)::bigint as row_estimate,
-                SUM(index_count)::bigint as index_count,
-                array_agg(name ORDER BY name) FILTER (WHERE is_partition) as partitions
-            FROM table_hierarchy
-            GROUP BY parent_schema, parent_name
-            ORDER BY size_bytes DESC
-            "#;
-    tracing::debug!(filter = %query.filter, "tables SQL:\n{}", tables_sql);
-    let mut all_tables: Vec<TableRowDb> = match connect_pg(&state, &active).await {
-        Ok(pg) => match sqlx::query_as::<_, TableRowDb>(
-            tables_sql,
-        )
-        .fetch_all(&pg)
-        .await
-        {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::warn!("Failed to load tables: {}", err);
-                Vec::new()
-            }
-        },
-        Err(err) => {
-            tracing::warn!("Failed to connect to Postgres: {}", err);
-            Vec::new()
-        }
-    };
+    let cache_start = Instant::now();
+    let (mut all_tables, is_fetching) = get_cached_tables(&state, &active).await;
 
+    // Získej seznam unikátních schémat pro dropdown (z full cache)
+    let mut schemas: Vec<String> = all_tables.iter()
+        .map(|t| t.schema.clone())
+        .collect();
+    schemas.sort();
+    schemas.dedup();
+    let cache_ms = cache_start.elapsed().as_millis();
+
+    let schema_list_start = Instant::now();
     // Získej seznam unikátních schémat pro dropdown
+    let mut schemas: Vec<String> = all_tables.iter()
+        .map(|t| t.schema.clone())
+        .collect();
+    schemas.sort();
+    schemas.dedup();
+    let schema_list_ms = schema_list_start.elapsed().as_millis();
+
+    // Získej seznam unikátních schémat pro dropdown (z full cache)
     let mut schemas: Vec<String> = all_tables.iter()
         .map(|t| t.schema.clone())
         .collect();
@@ -173,36 +258,49 @@ pub async fn list_tables(
     schemas.dedup();
 
     // Schema filter - podporuje wildcard matching
+    let schema_filter_start = Instant::now();
     if query.schema != "*" && !query.schema.is_empty() {
-        all_tables.retain(|t| {
-            crate::utils::filter::matches_pattern(&t.schema, &query.schema)
-        });
+        if has_pattern_ops(&query.schema) {
+            all_tables.retain(|t| {
+                crate::utils::filter::matches_pattern(&t.schema, &query.schema)
+            });
+        } else {
+            let schema_exact = query.schema.clone();
+            all_tables.retain(|t| t.schema == schema_exact);
+        }
     }
+    let schema_filter_ms = schema_filter_start.elapsed().as_millis();
 
     // Aplikuj filtr pomocí parse_pattern_expression (jen názvy tabulek)
+    let filter_start = Instant::now();
     let total_count = all_tables.len();
-    let (includes, excludes) = parse_pattern_expression(&query.filter);
-    tracing::debug!(filter = %query.filter, ?includes, ?excludes, total = all_tables.len(), "tables filter parsed");
+    if query.filter != "*" && !query.filter.trim().is_empty() {
+        let (includes, excludes) = parse_pattern_expression(&query.filter);
+        tracing::debug!(filter = %query.filter, ?includes, ?excludes, total = all_tables.len(), "tables filter parsed");
+        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
+            all_tables.retain(|t| {
+                let matches_include = includes.iter().any(|pattern| {
+                    crate::utils::filter::matches_pattern(&t.name, pattern)
+                });
 
-    all_tables.retain(|t| {
-        let matches_include = includes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&t.name, pattern)
-        });
+                if !matches_include {
+                    return false;
+                }
 
-        if !matches_include {
-            return false;
+                let matches_exclude = excludes.iter().any(|pattern| {
+                    crate::utils::filter::matches_pattern(&t.name, pattern)
+                });
+
+                !matches_exclude
+            });
         }
-
-        let matches_exclude = excludes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&t.name, pattern)
-        });
-
-        !matches_exclude
-    });
+    }
+    let filter_ms = filter_start.elapsed().as_millis();
 
     let filtered_count = all_tables.len();
 
     // Aplikuj sortování
+    let sort_start = Instant::now();
     match query.sort_by.as_str() {
         "schema" => all_tables.sort_by(|a, b| {
             if query.sort_order == "asc" {
@@ -241,8 +339,10 @@ pub async fn list_tables(
         }),
         _ => {}
     }
+    let sort_ms = sort_start.elapsed().as_millis();
 
     // Paginace
+    let page_start = Instant::now();
     let page = if query.page == 0 { 1 } else { query.page };
     let per_page = query.per_page;
     let total_pages = (filtered_count as f64 / per_page as f64).ceil() as usize;
@@ -264,11 +364,14 @@ pub async fn list_tables(
             partitions: r.partitions.unwrap_or_default(),
         })
         .collect();
+    let page_ms = page_start.elapsed().as_millis();
 
     let selected_schema = if query.schema.is_empty() { "*".to_string() } else { query.schema.clone() };
     let display_filter = query.filter.clone();
 
     // Vyrenderuj initial table HTML
+    let render_start = Instant::now();
+    let schemas_json = serde_json::to_string(&schemas).unwrap_or_else(|_| "[]".to_string());
     let table_tpl = TablesTableTemplate {
         base_path: state.base_path.clone(),
         schema: query.schema.clone(),
@@ -283,8 +386,11 @@ pub async fn list_tables(
         showing_start: if filtered_count == 0 { 0 } else { start + 1 },
         showing_end: end,
         tables: paginated_tables.clone(),
+        is_fetching,
+        schemas_json,
     };
     let initial_table_html = table_tpl.render().unwrap_or_else(|_| String::from("<div>Error rendering table</div>"));
+    let render_ms = render_start.elapsed().as_millis();
 
     let tpl = TablesTemplate {
         ctx: build_ctx_with_endpoint(&state, Some(&active)),
@@ -304,7 +410,22 @@ pub async fn list_tables(
         tables: paginated_tables,
         schemas,
         initial_table_html,
+        is_fetching,
     };
+    let overall_ms = overall_start.elapsed().as_millis();
+    tracing::debug!(
+        schema = %query.schema,
+        filter = %query.filter,
+        cache_ms,
+        schema_list_ms,
+        schema_filter_ms,
+        filter_ms,
+        sort_ms,
+        page_ms,
+        render_ms,
+        overall_ms,
+        "tables timings"
+    );
 
     // Ulož filtr a per_page do cookies
     let mut jar = jar;
@@ -343,6 +464,7 @@ pub async fn tables_table(
     Path((schema, filter)): Path<(String, String)>,
     Query(mut query): Query<TablesQuery>,
 ) -> Result<Response, (axum::http::StatusCode, String)> {
+    let overall_start = Instant::now();
     let active = get_active_endpoint(&state, &jar).await;
     if active.is_none() {
         return Err((axum::http::StatusCode::BAD_REQUEST, "No active endpoint".to_string()));
@@ -354,65 +476,32 @@ pub async fn tables_table(
         return Err((axum::http::StatusCode::NOT_FOUND, "Not found".to_string()));
     }
 
-    let tables_sql = r#"
-            WITH table_hierarchy AS (
-                SELECT
-                    c.oid,
-                    n.nspname as schema,
-                    c.relname as name,
-                    COALESCE(parent.relname, c.relname) as parent_name,
-                    COALESCE(parent_ns.nspname, n.nspname) as parent_schema,
-                    pg_total_relation_size(c.oid) as size_bytes,
-                    COALESCE(NULLIF(s.n_live_tup, 0), NULLIF(c.reltuples, 0), 0)::bigint as row_estimate,
-                    (SELECT count(*) FROM pg_index i WHERE i.indrelid = c.oid) as index_count,
-                    CASE WHEN parent.oid IS NOT NULL THEN true ELSE false END as is_partition
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
-                LEFT JOIN pg_class parent ON parent.oid = i.inhparent
-                LEFT JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
-                LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
-                WHERE c.relkind IN ('r', 'p')
-                  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-            )
-            SELECT
-                parent_schema as schema,
-                parent_name as name,
-                SUM(size_bytes)::bigint as size_bytes,
-                SUM(row_estimate)::bigint as row_estimate,
-                SUM(index_count)::bigint as index_count,
-                array_agg(name ORDER BY name) FILTER (WHERE is_partition) as partitions
-            FROM table_hierarchy
-            GROUP BY parent_schema, parent_name
-            ORDER BY size_bytes DESC
-            "#;
-    tracing::debug!(schema = %query.schema, filter = %query.filter, "tables_table SQL:\n{}", tables_sql);
-    let mut all_tables: Vec<TableRowDb> = match connect_pg(&state, &active).await {
-        Ok(pg) => match sqlx::query_as::<_, TableRowDb>(
-            tables_sql,
-        )
-        .fetch_all(&pg)
-        .await
-        {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::warn!("Failed to load tables: {}", err);
-                Vec::new()
-            }
-        },
-        Err(err) => {
-            tracing::warn!("Failed to connect to Postgres: {}", err);
-            Vec::new()
-        }
-    };
+    let cache_start = Instant::now();
+    let (mut all_tables, is_fetching) = get_cached_tables(&state, &active).await;
+    let cache_ms = cache_start.elapsed().as_millis();
+
+    // Získej seznam unikátních schémat pro dropdown (z full cache)
+    let mut schemas: Vec<String> = all_tables.iter()
+        .map(|t| t.schema.clone())
+        .collect();
+    schemas.sort();
+    schemas.dedup();
 
     // Schema filter - podporuje wildcard matching
+    let schema_filter_start = Instant::now();
     if query.schema != "*" && !query.schema.is_empty() {
-        all_tables.retain(|t| {
-            crate::utils::filter::matches_pattern(&t.schema, &query.schema)
-        });
+        if has_pattern_ops(&query.schema) {
+            all_tables.retain(|t| {
+                crate::utils::filter::matches_pattern(&t.schema, &query.schema)
+            });
+        } else {
+            let schema_exact = query.schema.clone();
+            all_tables.retain(|t| t.schema == schema_exact);
+        }
     }
+    let schema_filter_ms = schema_filter_start.elapsed().as_millis();
 
+    let filter_start = Instant::now();
     let total_count = all_tables.len();
     let sample_all: Vec<String> = all_tables.iter().take(5).map(|t| format!("{}.{}", t.schema, t.name)).collect();
     tracing::debug!(
@@ -422,26 +511,31 @@ pub async fn tables_table(
         sample = ?sample_all,
         "tables_table before filter"
     );
-    let (includes, excludes) = parse_pattern_expression(&query.filter);
-    tracing::debug!(schema = %query.schema, filter = %query.filter, ?includes, ?excludes, total = all_tables.len(), "tables_table filter parsed");
-
-    all_tables.retain(|t| {
-        let matches_include = includes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&t.name, pattern)
-        });
-        if !matches_include {
-            return false;
+    if query.filter != "*" && !query.filter.trim().is_empty() {
+        let (includes, excludes) = parse_pattern_expression(&query.filter);
+        tracing::debug!(schema = %query.schema, filter = %query.filter, ?includes, ?excludes, total = all_tables.len(), "tables_table filter parsed");
+        if !(includes.len() == 1 && includes[0] == "*" && excludes.is_empty()) {
+            all_tables.retain(|t| {
+                let matches_include = includes.iter().any(|pattern| {
+                    crate::utils::filter::matches_pattern(&t.name, pattern)
+                });
+                if !matches_include {
+                    return false;
+                }
+                let matches_exclude = excludes.iter().any(|pattern| {
+                    crate::utils::filter::matches_pattern(&t.name, pattern)
+                });
+                !matches_exclude
+            });
         }
-        let matches_exclude = excludes.iter().any(|pattern| {
-            crate::utils::filter::matches_pattern(&t.name, pattern)
-        });
-        !matches_exclude
-    });
+    }
+    let filter_ms = filter_start.elapsed().as_millis();
 
     let filtered_count = all_tables.len();
     let sample: Vec<String> = all_tables.iter().take(5).map(|t| t.name.clone()).collect();
     tracing::debug!(schema = %query.schema, filter = %query.filter, filtered = filtered_count, sample = ?sample, "tables_table filtered result");
 
+    let sort_start = Instant::now();
     match query.sort_by.as_str() {
         "schema" => all_tables.sort_by(|a, b| {
             if query.sort_order == "asc" {
@@ -480,7 +574,9 @@ pub async fn tables_table(
         }),
         _ => {}
     }
+    let sort_ms = sort_start.elapsed().as_millis();
 
+    let page_start = Instant::now();
     let page = if query.page == 0 { 1 } else { query.page };
     let per_page = query.per_page;
     let total_pages = (filtered_count as f64 / per_page as f64).ceil() as usize;
@@ -502,7 +598,10 @@ pub async fn tables_table(
             partitions: r.partitions.unwrap_or_default(),
         })
         .collect();
+    let page_ms = page_start.elapsed().as_millis();
 
+    let render_start = Instant::now();
+    let schemas_json = serde_json::to_string(&schemas).unwrap_or_else(|_| "[]".to_string());
     let tpl = TablesTableTemplate {
         base_path: state.base_path.clone(),
         schema: query.schema.clone(),
@@ -517,7 +616,23 @@ pub async fn tables_table(
         showing_start: if filtered_count == 0 { 0 } else { start + 1 },
         showing_end: end,
         tables: paginated_tables,
+        is_fetching,
+        schemas_json,
     };
+    let render_ms = render_start.elapsed().as_millis();
+    let overall_ms = overall_start.elapsed().as_millis();
+    tracing::debug!(
+        schema = %query.schema,
+        filter = %query.filter,
+        cache_ms,
+        schema_filter_ms,
+        filter_ms,
+        sort_ms,
+        page_ms,
+        render_ms,
+        overall_ms,
+        "tables_table timings"
+    );
 
     // Ulož filtr a per_page do cookies
     let schema_key = cookie_schema_key(&query.schema);

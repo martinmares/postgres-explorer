@@ -9,6 +9,9 @@ pub mod tables;
 pub mod tuning;
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
+use tokio::sync::RwLock;
 use crate::templates::AppContext;
 use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::Cookie;
@@ -19,6 +22,17 @@ use sqlx::PgPool;
 pub struct AppState {
     pub db: crate::db::Database,
     pub base_path: String,
+    pub schemas_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::schemas::SchemaRowDb>>>>,
+    pub tables_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::tables::TableRowDb>>>>,
+    pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
+}
+
+pub const CACHE_TTL: Duration = Duration::from_secs(15 * 60);
+
+pub struct CacheEntry<T> {
+    pub data: Vec<T>,
+    pub fetched_at: Instant,
+    pub fetching: bool,
 }
 
 pub fn build_ctx(state: &Arc<AppState>) -> AppContext {

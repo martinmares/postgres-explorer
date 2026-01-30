@@ -93,15 +93,7 @@ if (typeof window.filterInputTimer === 'undefined') {
 window.handleFilterInput = function(input) {
     clearTimeout(window.filterInputTimer);
     window.filterInputTimer = setTimeout(() => {
-        const schema = document.getElementById('schema-select').value || '*';
-        const filter = (input.value || '*').trim() || '*';
-        const perPage = document.querySelector('[name="per_page"]').value;
-        const tablesCard = document.querySelector('#tables-table .card');
-        const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
-        const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
-        const base = window.__BASE_PATH__ || '';
-
-        const url = `${base}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(filter)}/table?page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`;
+        const url = buildTablesUrl(1);
         loadTables(url);
     }, 400);
 };
@@ -134,14 +126,7 @@ document.addEventListener('htmx:afterSettle', function() {
 
 // Per page change
 window.applyPerPageChange = function() {
-    const schema = document.getElementById('schema-select').value || '*';
-    const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
-    const perPage = document.getElementById('per-page-select').value;
-    const tablesCard = document.querySelector('#tables-table .card');
-    const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
-    const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
-    const base = window.__BASE_PATH__ || '';
-    const url = `${base}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(filter)}/table?page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`;
+    const url = buildTablesUrl(1);
     loadTables(url);
 };
 
@@ -149,21 +134,25 @@ window.applyPerPageChange = function() {
 window.applySchemaFilter = function() {
     const schema = document.getElementById('schema-select').value;
     const filterInput = document.getElementById('filter-input');
-    const perPage = document.querySelector('[name="per_page"]').value;
     const schemaHidden = document.querySelector('[name="schema"]');
-    const tablesCard = document.querySelector('#tables-table .card');
-    const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
-    const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
 
     if (schemaHidden) {
         schemaHidden.value = schema || '*';
     }
-    const actualFilter = (filterInput.value || '*').trim() || '*';
-
-    const base = window.__BASE_PATH__ || '';
-    const url = `${base}/tables/${encodeURIComponent(schema || '*')}/${encodeURIComponent(actualFilter)}/table?page=1&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`;
+    const url = buildTablesUrl(1);
     loadTables(url);
 };
+
+function buildTablesUrl(page) {
+    const schema = document.getElementById('schema-select').value || '*';
+    const filter = (document.getElementById('filter-input').value || '*').trim() || '*';
+    const perPage = document.querySelector('[name="per_page"]').value;
+    const tablesCard = document.querySelector('#tables-table .card');
+    const sortBy = tablesCard ? (tablesCard.dataset.sortBy || 'size') : 'size';
+    const sortOrder = tablesCard ? (tablesCard.dataset.sortOrder || 'desc') : 'desc';
+    const base = window.__BASE_PATH__ || '';
+    return `${base}/tables/${encodeURIComponent(schema)}/${encodeURIComponent(filter)}/table?page=${page}&per_page=${perPage}&sort_by=${sortBy}&sort_order=${sortOrder}`;
+}
 
 function loadTables(url) {
     const target = document.getElementById('tables-table');
@@ -172,6 +161,33 @@ function loadTables(url) {
         .then(res => res.text())
         .then(html => {
             target.innerHTML = html;
+            const fetching = target.querySelector('[data-fetching="true"]');
+            if (fetching) {
+                setTimeout(() => loadTables(url), 1000);
+            }
+            const schemaScript = target.querySelector('#tables-schemas-json');
+            const schemaSelect = document.getElementById('schema-select');
+            if (schemaScript && schemaSelect) {
+                try {
+                    const schemas = JSON.parse(schemaScript.textContent || '[]');
+                    if (Array.isArray(schemas) && schemas.length > 0) {
+                        if (schemaSelect.options.length <= 1) {
+                            schemas.forEach(s => {
+                                const opt = document.createElement('option');
+                                opt.value = s;
+                                opt.textContent = s;
+                                schemaSelect.appendChild(opt);
+                            });
+                            const selected = '{{ selected_schema }}';
+                            if (selected) {
+                                schemaSelect.value = selected;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse schemas json', e);
+                }
+            }
         })
         .catch(err => {
             target.innerHTML = `<div class="text-danger">Failed to load tables: ${err}</div>`;
@@ -187,6 +203,13 @@ document.addEventListener('click', function(evt) {
     evt.preventDefault();
     loadTables(url);
 });
+
+{
+    const target = document.getElementById('tables-table');
+    if (target && target.querySelector('[data-fetching="true"]')) {
+        loadTables(buildTablesUrl(1));
+    }
+}
 
 
 // Open table detail modal

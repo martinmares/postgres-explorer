@@ -5,9 +5,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 
-use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
+use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState, CACHE_TTL, CacheEntry};
 use crate::templates::{SchemaRow, SchemasTemplate, SchemasTableTemplate};
 use crate::utils::filter::parse_pattern_expression;
+use std::time::Instant;
 
 #[derive(Deserialize)]
 pub struct SchemasQuery {
@@ -44,11 +45,101 @@ fn default_sort_order() -> String {
 }
 
 #[derive(sqlx::FromRow, Clone)]
-struct SchemaRowDb {
+pub struct SchemaRowDb {
     name: String,
     table_count: i64,
     index_count: i64,
     total_size: i64,
+}
+
+async fn fetch_schemas_from_db(
+    state: &Arc<AppState>,
+    active: &crate::db::models::Endpoint,
+) -> Result<Vec<SchemaRowDb>, String> {
+    match connect_pg(state, active).await {
+        Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
+            r#"
+            SELECT n.nspname as name,
+                   (
+                       SELECT count(DISTINCT COALESCE(parent.oid, c.oid))
+                       FROM pg_class c
+                       LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
+                       LEFT JOIN pg_class parent ON parent.oid = i.inhparent
+                       WHERE c.relnamespace = n.oid AND c.relkind IN ('r','p')
+                   ) as table_count,
+                   (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'i') as index_count,
+                   COALESCE((SELECT SUM(pg_total_relation_size(c.oid))::bigint FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r'), 0) as total_size
+            FROM pg_namespace n
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY n.nspname
+            "#,
+        )
+        .fetch_all(&pg)
+        .await
+        {
+            Ok(rows) => Ok(rows),
+            Err(err) => Err(format!("Failed to load schemas: {}", err)),
+        },
+        Err(err) => Err(format!("Failed to connect to Postgres: {}", err)),
+    }
+}
+
+async fn get_cached_schemas(
+    state: &Arc<AppState>,
+    active: &crate::db::models::Endpoint,
+) -> (Vec<SchemaRowDb>, bool) {
+    let now = Instant::now();
+    let mut should_refresh = false;
+    let (data, fetching) = {
+        let mut cache = state.schemas_cache.write().await;
+        match cache.get_mut(&active.id) {
+            Some(entry) => {
+                let stale = now.duration_since(entry.fetched_at) > CACHE_TTL;
+                if stale && !entry.fetching {
+                    entry.fetching = true;
+                    should_refresh = true;
+                }
+                tracing::debug!(
+                    "schemas cache hit id={} stale={} fetching={}",
+                    active.id,
+                    stale,
+                    entry.fetching
+                );
+                (entry.data.clone(), entry.fetching)
+            }
+            None => {
+                cache.insert(
+                    active.id,
+                    CacheEntry {
+                        data: Vec::new(),
+                        fetched_at: now,
+                        fetching: true,
+                    },
+                );
+                should_refresh = true;
+                tracing::debug!("schemas cache miss id={}, scheduling refresh", active.id);
+                (Vec::new(), true)
+            }
+        }
+    };
+
+    if should_refresh {
+        let state = state.clone();
+        let active = active.clone();
+        tokio::spawn(async move {
+            let result = fetch_schemas_from_db(&state, &active).await;
+            let mut cache = state.schemas_cache.write().await;
+            if let Some(entry) = cache.get_mut(&active.id) {
+                if let Ok(rows) = result {
+                    entry.data = rows;
+                    entry.fetched_at = Instant::now();
+                }
+                entry.fetching = false;
+            }
+        });
+    }
+
+    (data, fetching)
 }
 
 pub async fn list_schemas(
@@ -80,38 +171,7 @@ pub async fn list_schemas(
         }
     }
 
-    let mut all_schemas: Vec<SchemaRowDb> = match connect_pg(&state, &active).await {
-        Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
-            r#"
-            SELECT n.nspname as name,
-                   (
-                       SELECT count(DISTINCT COALESCE(parent.oid, c.oid))
-                       FROM pg_class c
-                       LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
-                       LEFT JOIN pg_class parent ON parent.oid = i.inhparent
-                       WHERE c.relnamespace = n.oid AND c.relkind IN ('r','p')
-                   ) as table_count,
-                   (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'i') as index_count,
-                   COALESCE((SELECT SUM(pg_total_relation_size(c.oid))::bigint FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r'), 0) as total_size
-            FROM pg_namespace n
-            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-            ORDER BY n.nspname
-            "#,
-        )
-        .fetch_all(&pg)
-        .await
-        {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::warn!("Failed to load schemas: {}", err);
-                Vec::new()
-            }
-        },
-        Err(err) => {
-            tracing::warn!("Failed to connect to Postgres: {}", err);
-            Vec::new()
-        }
-    };
+    let (mut all_schemas, is_fetching) = get_cached_schemas(&state, &active).await;
 
     // Filtr
     let total_count = all_schemas.len();
@@ -199,6 +259,7 @@ pub async fn list_schemas(
         total_pages,
         showing_start: if filtered_count == 0 { 0 } else { start + 1 },
         showing_end: end,
+        is_fetching,
         schemas: paginated_schemas,
     };
 
@@ -235,38 +296,7 @@ pub async fn schemas_table(
     let filter_cookie_name = format!("schemas_filter_{}", active.id);
     let per_page_cookie_name = format!("schemas_per_page_{}", active.id);
 
-    let mut all_schemas: Vec<SchemaRowDb> = match connect_pg(&state, &active).await {
-        Ok(pg) => match sqlx::query_as::<_, SchemaRowDb>(
-            r#"
-            SELECT n.nspname as name,
-                   (
-                       SELECT count(DISTINCT COALESCE(parent.oid, c.oid))
-                       FROM pg_class c
-                       LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
-                       LEFT JOIN pg_class parent ON parent.oid = i.inhparent
-                       WHERE c.relnamespace = n.oid AND c.relkind IN ('r','p')
-                   ) as table_count,
-                   (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'i') as index_count,
-                   COALESCE((SELECT SUM(pg_total_relation_size(c.oid))::bigint FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind = 'r'), 0) as total_size
-            FROM pg_namespace n
-            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-            ORDER BY n.nspname
-            "#,
-        )
-        .fetch_all(&pg)
-        .await
-        {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::warn!("Failed to load schemas: {}", err);
-                Vec::new()
-            }
-        },
-        Err(err) => {
-            tracing::warn!("Failed to connect to Postgres: {}", err);
-            Vec::new()
-        }
-    };
+    let (mut all_schemas, is_fetching) = get_cached_schemas(&state, &active).await;
 
     let total_count = all_schemas.len();
     let (includes, excludes) = parse_pattern_expression(&query.filter);
@@ -350,6 +380,7 @@ pub async fn schemas_table(
         total_pages,
         showing_start: if filtered_count == 0 { 0 } else { start + 1 },
         showing_end: end,
+        is_fetching,
         schemas: paginated_schemas,
     };
 

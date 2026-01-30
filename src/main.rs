@@ -8,7 +8,9 @@ use anyhow::Result;
 use axum::routing::{get, put};
 use axum::Router;
 use clap::Parser;
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
@@ -44,7 +46,13 @@ async fn main() -> Result<()> {
     config::init_directories()?;
     let db = db::Database::new().await?;
     let base_path = normalize_base_path(&args.base_path);
-    let state = Arc::new(handlers::AppState { db, base_path: base_path.clone() });
+    let state = Arc::new(handlers::AppState {
+        db,
+        base_path: base_path.clone(),
+        schemas_cache: Arc::new(RwLock::new(HashMap::new())),
+        tables_cache: Arc::new(RwLock::new(HashMap::new())),
+        indices_cache: Arc::new(RwLock::new(HashMap::new())),
+    });
 
     let router = Router::new()
         .route("/", get(handlers::dashboard::dashboard))
