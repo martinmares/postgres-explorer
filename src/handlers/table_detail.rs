@@ -665,3 +665,182 @@ pub async fn table_partitions(
         },
     }
 }
+
+// Lazy load relationships
+pub async fn table_relationships(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path((schema, name)): Path<(String, String)>,
+) -> Html<String> {
+    let active = match get_active_endpoint(&state, &jar).await {
+        Some(a) => a,
+        None => return Html("<div class='text-muted'>No active connection</div>".to_string()),
+    };
+
+    let pg = match connect_pg(&state, &active).await {
+        Ok(p) => p,
+        Err(_) => return Html("<div class='text-muted'>Connection failed</div>".to_string()),
+    };
+
+    // Get outgoing FK relationships (this table references other tables)
+    let outgoing = sqlx::query(
+        r#"
+        SELECT
+            c.conname as constraint_name,
+            fns.nspname as foreign_schema,
+            fc.relname as foreign_table,
+            string_agg(fa.attname, ', ' ORDER BY u.ord) as foreign_columns,
+            string_agg(la.attname, ', ' ORDER BY u.ord) as local_columns
+        FROM pg_constraint c
+        JOIN pg_class tc ON tc.oid = c.conrelid
+        JOIN pg_namespace tns ON tns.oid = tc.relnamespace
+        JOIN pg_class fc ON fc.oid = c.confrelid
+        JOIN pg_namespace fns ON fns.oid = fc.relnamespace
+        CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS u(lkey, fkey, ord)
+        JOIN pg_attribute la ON la.attrelid = tc.oid AND la.attnum = u.lkey
+        JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = u.fkey
+        WHERE tns.nspname = $1 AND tc.relname = $2 AND c.contype = 'f'
+        GROUP BY c.conname, fns.nspname, fc.relname
+        ORDER BY fc.relname
+        "#,
+    )
+    .bind(&schema)
+    .bind(&name)
+    .fetch_all(&pg)
+    .await;
+
+    // Get incoming FK relationships (other tables reference this table)
+    let incoming = sqlx::query(
+        r#"
+        SELECT
+            c.conname as constraint_name,
+            tns.nspname as referencing_schema,
+            tc.relname as referencing_table,
+            string_agg(la.attname, ', ' ORDER BY u.ord) as referencing_columns,
+            string_agg(fa.attname, ', ' ORDER BY u.ord) as referenced_columns
+        FROM pg_constraint c
+        JOIN pg_class tc ON tc.oid = c.conrelid
+        JOIN pg_namespace tns ON tns.oid = tc.relnamespace
+        JOIN pg_class fc ON fc.oid = c.confrelid
+        JOIN pg_namespace fns ON fns.oid = fc.relnamespace
+        CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS u(lkey, fkey, ord)
+        JOIN pg_attribute la ON la.attrelid = tc.oid AND la.attnum = u.lkey
+        JOIN pg_attribute fa ON fa.attrelid = fc.oid AND fa.attnum = u.fkey
+        WHERE fns.nspname = $1 AND fc.relname = $2 AND c.contype = 'f'
+        GROUP BY c.conname, tns.nspname, tc.relname
+        ORDER BY tc.relname
+        "#,
+    )
+    .bind(&schema)
+    .bind(&name)
+    .fetch_all(&pg)
+    .await;
+
+    let outgoing = outgoing.unwrap_or_default();
+    let incoming = incoming.unwrap_or_default();
+
+    if outgoing.is_empty() && incoming.is_empty() {
+        return Html("<div class='text-center text-muted py-5'>No foreign key relationships found</div>".to_string());
+    }
+
+    // Generate Mermaid ER diagram
+    let mut mermaid = String::from("erDiagram\n");
+
+    let current_table_id = format!("{}_{}", schema, name).replace('.', "_");
+
+    // Add outgoing relationships (this table -> foreign table)
+    for row in &outgoing {
+        let foreign_schema: String = row.get("foreign_schema");
+        let foreign_table: String = row.get("foreign_table");
+        let foreign_id = format!("{}_{}", foreign_schema, foreign_table).replace('.', "_");
+        let local_cols: String = row.get("local_columns");
+        let foreign_cols: String = row.get("foreign_columns");
+
+        mermaid.push_str(&format!(
+            "    {} }}o--|| {} : \"{} -> {}\"\n",
+            current_table_id, foreign_id, local_cols, foreign_cols
+        ));
+    }
+
+    // Add incoming relationships (referencing table -> this table)
+    for row in &incoming {
+        let ref_schema: String = row.get("referencing_schema");
+        let ref_table: String = row.get("referencing_table");
+        let ref_id = format!("{}_{}", ref_schema, ref_table).replace('.', "_");
+        let ref_cols: String = row.get("referencing_columns");
+        let referenced_cols: String = row.get("referenced_columns");
+
+        mermaid.push_str(&format!(
+            "    {} }}o--|| {} : \"{} -> {}\"\n",
+            ref_id, current_table_id, ref_cols, referenced_cols
+        ));
+    }
+
+    let base_path = if state.base_path == "/" { "" } else { &state.base_path };
+
+    // Build HTML with Mermaid diagram and tables
+    let mut html = String::new();
+    html.push_str("<div class='row'>");
+    html.push_str("<div class='col-12 mb-4'>");
+    html.push_str("<div class='card'><div class='card-body'>");
+    html.push_str(&format!("<pre class='mermaid'>{}</pre>", mermaid));
+    html.push_str("</div></div>");
+    html.push_str("</div>");
+
+    // Outgoing relationships table
+    if !outgoing.is_empty() {
+        html.push_str("<div class='col-md-6'>");
+        html.push_str("<h3 class='mb-3'><i class='ti ti-arrow-right me-2'></i>References (Outgoing FK)</h3>");
+        html.push_str("<div class='table-responsive'><table class='table table-vcenter card'><thead><tr><th>Constraint</th><th>Foreign Table</th><th>Columns</th></tr></thead><tbody>");
+
+        for row in &outgoing {
+            let constraint_name: String = row.get("constraint_name");
+            let foreign_schema: String = row.get("foreign_schema");
+            let foreign_table: String = row.get("foreign_table");
+            let local_cols: String = row.get("local_columns");
+            let foreign_cols: String = row.get("foreign_columns");
+
+            html.push_str(&format!("<tr><td><code class='text-muted'>{}</code></td>", constraint_name));
+            html.push_str(&format!(
+                "<td><a href='{}/tables/{}/{}/detail' class='text-decoration-none'><strong>{}.{}</strong></a></td>",
+                base_path, foreign_schema, foreign_table, foreign_schema, foreign_table
+            ));
+            html.push_str(&format!("<td><code>{}</code> → <code>{}</code></td></tr>", local_cols, foreign_cols));
+        }
+
+        html.push_str("</tbody></table></div>");
+        html.push_str("</div>");
+    }
+
+    // Incoming relationships table
+    if !incoming.is_empty() {
+        html.push_str("<div class='col-md-6'>");
+        html.push_str("<h3 class='mb-3'><i class='ti ti-arrow-left me-2'></i>Referenced by (Incoming FK)</h3>");
+        html.push_str("<div class='table-responsive'><table class='table table-vcenter card'><thead><tr><th>Constraint</th><th>Referencing Table</th><th>Columns</th></tr></thead><tbody>");
+
+        for row in &incoming {
+            let constraint_name: String = row.get("constraint_name");
+            let ref_schema: String = row.get("referencing_schema");
+            let ref_table: String = row.get("referencing_table");
+            let ref_cols: String = row.get("referencing_columns");
+            let referenced_cols: String = row.get("referenced_columns");
+
+            html.push_str(&format!("<tr><td><code class='text-muted'>{}</code></td>", constraint_name));
+            html.push_str(&format!(
+                "<td><a href='{}/tables/{}/{}/detail' class='text-decoration-none'><strong>{}.{}</strong></a></td>",
+                base_path, ref_schema, ref_table, ref_schema, ref_table
+            ));
+            html.push_str(&format!("<td><code>{}</code> → <code>{}</code></td></tr>", ref_cols, referenced_cols));
+        }
+
+        html.push_str("</tbody></table></div>");
+        html.push_str("</div>");
+    }
+
+    html.push_str("</div>");
+
+    // Reinitialize mermaid after content loads
+    html.push_str("<script>if (window.mermaid) { window.mermaid.run(); }</script>");
+
+    Html(html)
+}
