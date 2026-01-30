@@ -167,7 +167,9 @@
                 <td class="text-end text-nowrap">
                   {{ t.rows }}
                   {% if t.stats_stale %}
-                  <span class="badge bg-yellow-lt ms-2" title="Row stats appear stale. Consider running ANALYZE.">stats stale</span>
+                  <span class="badge bg-yellow-lt ms-2" style="cursor: pointer;" onclick="showAnalyzeModal('{{ t.schema }}', '{{ t.name }}')" title="Statistics are stale. Click to run ANALYZE.">
+                    <i class="ti ti-alert-triangle me-1"></i>stats stale
+                  </span>
                   {% endif %}
                 </td>
                 <td class="text-end text-nowrap">{{ t.size }}</td>
@@ -185,5 +187,95 @@
     </div>
   </div>
 </div>
+
+<!-- Modal pro ANALYZE -->
+<div class="modal modal-blur fade" id="analyze-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Stale Statistics Detected</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <strong>Table:</strong> <code id="analyze-table-name"></code>
+        </div>
+        <p>
+          PostgreSQL's query planner relies on statistics to make optimal decisions.
+          This table shows <span class="badge bg-yellow-lt">0 rows</span> in statistics but has actual data.
+        </p>
+        <p>
+          Running <code>ANALYZE</code> will update the statistics, which helps PostgreSQL:
+        </p>
+        <ul>
+          <li>Choose better query plans</li>
+          <li>Optimize index usage</li>
+          <li>Improve query performance</li>
+        </ul>
+        <div class="alert alert-info">
+          <i class="ti ti-info-circle me-2"></i>
+          <code>ANALYZE</code> is a read-only operation that samples table data. It's safe and typically fast.
+        </div>
+        <div id="analyze-result" class="mt-3" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="run-analyze-btn" onclick="runAnalyze()">
+          <i class="ti ti-refresh me-1"></i>Run ANALYZE
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentAnalyzeSchema = '';
+let currentAnalyzeTable = '';
+
+function showAnalyzeModal(schema, table) {
+  currentAnalyzeSchema = schema;
+  currentAnalyzeTable = table;
+  document.getElementById('analyze-table-name').textContent = schema + '.' + table;
+  document.getElementById('analyze-result').style.display = 'none';
+  document.getElementById('run-analyze-btn').disabled = false;
+  new bootstrap.Modal(document.getElementById('analyze-modal')).show();
+}
+
+function runAnalyze() {
+  const btn = document.getElementById('run-analyze-btn');
+  const resultDiv = document.getElementById('analyze-result');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+
+  const basePath = '{{ ctx.base_path }}' === '/' ? '' : '{{ ctx.base_path }}';
+  fetch(basePath + '/analyze/' + encodeURIComponent(currentAnalyzeSchema) + '/' + encodeURIComponent(currentAnalyzeTable), {
+    method: 'POST'
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      resultDiv.innerHTML = '<div class="alert alert-success"><i class="ti ti-check me-2"></i>ANALYZE completed successfully! Statistics have been updated.</div>';
+      resultDiv.style.display = 'block';
+
+      // Po 2 sekundách reload stránku
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } else {
+      resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>Failed: ' + (data.error || 'Unknown error') + '</div>';
+      resultDiv.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-refresh me-1"></i>Run ANALYZE';
+    }
+  })
+  .catch(err => {
+    resultDiv.innerHTML = '<div class="alert alert-danger"><i class="ti ti-x me-2"></i>Error: ' + err.message + '</div>';
+    resultDiv.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-refresh me-1"></i>Run ANALYZE';
+  });
+}
+</script>
 
 {% endblock %}

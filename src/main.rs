@@ -48,6 +48,7 @@ async fn main() -> Result<()> {
 
     let router = Router::new()
         .route("/", get(handlers::dashboard::dashboard))
+        .route("/analyze/:schema/:table", axum::routing::post(handlers::dashboard::analyze_table))
         .route("/endpoints", get(handlers::endpoints::list_endpoints).post(handlers::endpoints::create_endpoint))
         .route("/endpoints/{id}", put(handlers::endpoints::update_endpoint).delete(handlers::endpoints::delete_endpoint))
         .route("/endpoints/{id}/select", axum::routing::post(handlers::endpoints::select_endpoint))

@@ -1,6 +1,7 @@
-use axum::extract::State;
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::extract::{Path, State};
+use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use askama::Template;
+use serde::Serialize;
 use sqlx::Row;
 use std::sync::Arc;
 use axum_extra::extract::CookieJar;
@@ -192,6 +193,70 @@ pub async fn dashboard(
         .map(Html)
         .map(|h| h.into_response())
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(Serialize)]
+pub struct AnalyzeResponse {
+    success: bool,
+    error: Option<String>,
+}
+
+pub async fn analyze_table(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path((schema, table)): Path<(String, String)>,
+) -> Json<AnalyzeResponse> {
+    let active = match get_active_endpoint(&state, &jar).await {
+        Some(a) => a,
+        None => {
+            return Json(AnalyzeResponse {
+                success: false,
+                error: Some("No active connection".to_string()),
+            });
+        }
+    };
+
+    let pg = match connect_pg(&state, &active).await {
+        Ok(p) => p,
+        Err(e) => {
+            return Json(AnalyzeResponse {
+                success: false,
+                error: Some(format!("Connection failed: {}", e)),
+            });
+        }
+    };
+
+    // Escapni schema a table jména pomocí quote_ident
+    let analyze_sql = format!(
+        "ANALYZE {}.{}",
+        sqlx::query_scalar::<_, String>("SELECT quote_ident($1)")
+            .bind(&schema)
+            .fetch_one(&pg)
+            .await
+            .unwrap_or_else(|_| schema.clone()),
+        sqlx::query_scalar::<_, String>("SELECT quote_ident($1)")
+            .bind(&table)
+            .fetch_one(&pg)
+            .await
+            .unwrap_or_else(|_| table.clone())
+    );
+
+    match sqlx::query(&analyze_sql).execute(&pg).await {
+        Ok(_) => {
+            tracing::info!("Successfully ran ANALYZE on {}.{}", schema, table);
+            Json(AnalyzeResponse {
+                success: true,
+                error: None,
+            })
+        }
+        Err(e) => {
+            tracing::error!("Failed to run ANALYZE on {}.{}: {}", schema, table, e);
+            Json(AnalyzeResponse {
+                success: false,
+                error: Some(format!("ANALYZE failed: {}", e)),
+            })
+        }
+    }
 }
 
 fn format_number(n: i64) -> String {
