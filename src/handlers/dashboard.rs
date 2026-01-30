@@ -106,6 +106,7 @@ pub async fn dashboard(
                     c.oid,
                     n.nspname as schema,
                     c.relname as name,
+                    c.relkind as kind,
                     COALESCE(parent.relname, c.relname) as parent_name,
                     COALESCE(parent_ns.nspname, n.nspname) as parent_schema,
                     pg_total_relation_size(c.oid) as size_bytes,
@@ -125,7 +126,8 @@ pub async fn dashboard(
                 parent_name as name,
                 SUM(size_bytes)::bigint as size_bytes,
                 SUM(row_estimate)::bigint as row_estimate,
-                array_agg(th.name ORDER BY th.name) FILTER (WHERE is_partition) as partitions
+                array_agg(th.name ORDER BY th.name) FILTER (WHERE is_partition) as partitions,
+                bool_or(kind = 'p') as is_partitioned_parent
             FROM table_hierarchy th
             GROUP BY parent_schema, parent_name
             ORDER BY size_bytes DESC
@@ -143,6 +145,7 @@ pub async fn dashboard(
                 let size_bytes: i64 = row.get("size_bytes");
                 let row_estimate: i64 = row.get("row_estimate");
                 let partitions: Option<Vec<String>> = row.try_get("partitions").ok();
+                let is_partitioned: bool = row.get("is_partitioned_parent");
                 let mut relative_percent = if total_size > 0 {
                     (size_bytes as f64 / total_size as f64) * 100.0
                 } else {
@@ -153,7 +156,8 @@ pub async fn dashboard(
                 }
                 let relative_percent = relative_percent.round().min(100.0).max(0.0) as i64;
 
-                let stats_stale = row_estimate == 0 && size_bytes > 0;
+                // Pro partitioned tables nebudeme ukazovat "stats stale" protože parent nemá data přímo
+                let stats_stale = row_estimate == 0 && size_bytes > 0 && !is_partitioned;
 
                 top_tables.push(TopTable {
                     schema: schema.clone(),

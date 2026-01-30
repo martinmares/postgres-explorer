@@ -165,12 +165,12 @@
                   {% endif %}
                 </td>
                 <td class="text-end text-nowrap">
-                  {{ t.rows }}
                   {% if t.stats_stale %}
-                  <span class="badge bg-yellow-lt ms-2" style="cursor: pointer;" onclick="showAnalyzeModal('{{ t.schema }}', '{{ t.name }}')" title="Statistics are stale. Click to run ANALYZE.">
+                  <span class="badge bg-yellow-lt me-2" style="cursor: pointer;" onclick="showAnalyzeModal('{{ t.schema }}', '{{ t.name }}')" title="Statistics are stale. Click to run ANALYZE.">
                     <i class="ti ti-alert-triangle me-1"></i>stats stale
                   </span>
                   {% endif %}
+                  {{ t.rows }}
                 </td>
                 <td class="text-end text-nowrap">{{ t.size }}</td>
                 <td>
