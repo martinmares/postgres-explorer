@@ -1,0 +1,122 @@
+<div class="card" data-sort-by="{{ sort_by }}" data-sort-order="{{ sort_order }}">
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table table-hover">
+      <thead>
+        <tr>
+          <th style="cursor: pointer;"
+              hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page=1&per_page={{ per_page }}&sort_by=schema&sort_order={% if sort_by == "schema" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+              hx-target="#indices-table"
+              hx-swap="innerHTML">Schema</th>
+          <th style="cursor: pointer;"
+              hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page=1&per_page={{ per_page }}&sort_by=table&sort_order={% if sort_by == "table" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+              hx-target="#indices-table"
+              hx-swap="innerHTML">Table</th>
+          <th style="cursor: pointer;"
+              hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page=1&per_page={{ per_page }}&sort_by=name&sort_order={% if sort_by == "name" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}asc{% endif %}"
+              hx-target="#indices-table"
+              hx-swap="innerHTML">Index</th>
+          <th class="text-end" style="cursor: pointer;"
+              hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page=1&per_page={{ per_page }}&sort_by=size&sort_order={% if sort_by == "size" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}desc{% endif %}"
+              hx-target="#indices-table"
+              hx-swap="innerHTML">Size</th>
+          <th class="text-end" style="cursor: pointer;"
+              hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page=1&per_page={{ per_page }}&sort_by=scans&sort_order={% if sort_by == "scans" %}{% if sort_order == "asc" %}desc{% else %}asc{% endif %}{% else %}desc{% endif %}"
+              hx-target="#indices-table"
+              hx-swap="innerHTML">Scans</th>
+          <th class="text-end">Reads</th>
+          <th class="text-end">Fetches</th>
+          <th class="w-1">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% if indices.len() == 0 %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">No indices match your filter</td>
+        </tr>
+      {% else %}
+        {% for idx in indices %}
+        <tr>
+          <td>{{ idx.schema }}</td>
+          <td>{{ idx.table }}</td>
+          <td><code>{{ idx.name }}</code></td>
+          <td class="text-end text-nowrap">{{ idx.size }}</td>
+          <td class="text-end text-nowrap">{{ idx.scans }}</td>
+          <td class="text-end text-nowrap">{{ idx.idx_tup_read }}</td>
+          <td class="text-end text-nowrap">{{ idx.idx_tup_fetch }}</td>
+          <td class="text-end">
+            <div class="btn-list flex-nowrap">
+              <button class="btn btn-sm btn-icon btn-ghost-primary"
+                      data-schema="{{ idx.schema }}"
+                      data-index="{{ idx.name }}"
+                      onclick="openIndexInfo(this)"
+                      title="Info">
+                <i class="ti ti-info-circle"></i>
+              </button>
+              <button class="btn btn-sm btn-icon btn-ghost-warning"
+                      data-schema="{{ idx.schema }}"
+                      data-index="{{ idx.name }}"
+                      onclick="confirmReindexIndex(this)"
+                      title="Reindex">
+                <i class="ti ti-refresh"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% if filtered_count > 0 %}
+  <div class="card-footer d-flex align-items-center">
+    <p class="m-0 text-muted">
+      Showing {{ showing_start }} - {{ showing_end }} of {{ filtered_count }}
+      {% if filtered_count != total_count %}
+        ({{ total_count }} total)
+      {% endif %}
+    </p>
+    {% if total_pages > 1 %}
+    <ul class="pagination m-0 ms-auto">
+      {% if page > 1 %}
+      <li class="page-item">
+        <a class="page-link" href="#"
+           hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page={{ page - 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+           hx-target="#indices-table"
+           hx-swap="innerHTML">
+          <i class="ti ti-chevron-left"></i> Prev
+        </a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link"><i class="ti ti-chevron-left"></i> Prev</span></li>
+      {% endif %}
+
+      <li class="page-item active"><span class="page-link">{{ page }}</span></li>
+
+      {% if page < total_pages %}
+      <li class="page-item">
+        <a class="page-link" href="#"
+           hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+           hx-target="#indices-table"
+           hx-swap="innerHTML">
+          {{ page + 1 }}
+        </a>
+      </li>
+      {% endif %}
+
+      {% if page < total_pages %}
+      <li class="page-item">
+        <a class="page-link" href="#"
+           hx-get="{% if base_path == "/" %}/tables/indices/table{% else %}{{ base_path }}/tables/indices/table{% endif %}?schema={{ schema }}&table={{ table }}&filter={{ filter }}&page={{ page + 1 }}&per_page={{ per_page }}&sort_by={{ sort_by }}&sort_order={{ sort_order }}"
+           hx-target="#indices-table"
+           hx-swap="innerHTML">
+          Next <i class="ti ti-chevron-right"></i>
+        </a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">Next <i class="ti ti-chevron-right"></i></span></li>
+      {% endif %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

@@ -138,6 +138,40 @@ pub struct IndicesTemplate {
     pub ctx: AppContext,
     pub title: String,
     pub indices: Vec<IndexRow>,
+    pub schemas: Vec<String>,
+    pub tables: Vec<String>,
+    pub selected_schema: String,
+    pub selected_table: String,
+    pub filter: String,
+    pub sort_by: String,
+    pub sort_order: String,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_count: usize,
+    pub filtered_count: usize,
+    pub total_pages: usize,
+    pub showing_start: usize,
+    pub showing_end: usize,
+    pub initial_table_html: String,
+}
+
+#[derive(Template)]
+#[template(path = "indices_table.html")]
+pub struct IndicesTableTemplate {
+    pub indices: Vec<IndexRow>,
+    pub base_path: String,
+    pub schema: String,
+    pub table: String,
+    pub filter: String,
+    pub sort_by: String,
+    pub sort_order: String,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_count: usize,
+    pub filtered_count: usize,
+    pub total_pages: usize,
+    pub showing_start: usize,
+    pub showing_end: usize,
 }
 
 #[derive(Template)]
@@ -214,7 +248,13 @@ pub struct IndexRow {
     pub table: String,
     pub name: String,
     pub size: String,
+    pub size_bytes: i64,
     pub scans: String,
+    pub scans_count: i64,
+    pub idx_tup_read: String,
+    pub idx_tup_read_count: i64,
+    pub idx_tup_fetch: String,
+    pub idx_tup_fetch_count: i64,
 }
 
 #[derive(Clone)]

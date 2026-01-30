@@ -58,6 +58,9 @@ async fn main() -> Result<()> {
         .route("/tables/{schema}/{filter}", get(handlers::tables::list_tables))
         .route("/tables/{schema}/{filter}/table", get(handlers::tables::tables_table))
         .route("/tables/indices", get(handlers::indices::list_indices))
+        .route("/tables/indices/table", get(handlers::indices::indices_table))
+        .route("/tables/indices/tables", get(handlers::indices::indices_tables))
+        .route("/tables/indices/{schema}/{index}/info", get(handlers::indices::index_info))
         .route(
             "/tables/{schema}/{table}/detail",
             get(handlers::table_detail::table_detail),
