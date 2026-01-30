@@ -249,7 +249,7 @@ pub struct TopTable {
     pub size: String,
     pub size_bytes: i64,
     pub rows: String,
-    pub relative_percent: f64,
+    pub relative_percent: i64,
     pub partitions: Vec<String>,
     pub stats_stale: bool,
     pub schema_filter_url: String,

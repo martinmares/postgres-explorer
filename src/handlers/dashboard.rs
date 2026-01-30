@@ -134,7 +134,7 @@ pub async fn dashboard(
         .fetch_all(&pg)
         .await
         {
-            let max_size = rows.first().map(|r| r.get::<i64, _>("size_bytes")).unwrap_or(1);
+            let total_size: i64 = rows.iter().map(|r| r.get::<i64, _>("size_bytes")).sum();
 
             for row in rows {
                 let schema: String = row.get("schema");
@@ -142,11 +142,15 @@ pub async fn dashboard(
                 let size_bytes: i64 = row.get("size_bytes");
                 let row_estimate: i64 = row.get("row_estimate");
                 let partitions: Option<Vec<String>> = row.try_get("partitions").ok();
-                let relative_percent = if max_size > 0 {
-                    ((size_bytes as f64 / max_size as f64) * 100.0).min(100.0).max(0.0)
+                let mut relative_percent = if total_size > 0 {
+                    (size_bytes as f64 / total_size as f64) * 100.0
                 } else {
                     0.0
                 };
+                if size_bytes > 0 && relative_percent < 1.0 {
+                    relative_percent = 1.0;
+                }
+                let relative_percent = relative_percent.round().min(100.0).max(0.0) as i64;
 
                 let stats_stale = row_estimate == 0 && size_bytes > 0;
 

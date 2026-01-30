@@ -173,11 +173,7 @@
                 <td class="text-end text-nowrap">{{ t.size }}</td>
                 <td>
                   <div class="progress progress-sm">
-                    {% if loop.index == 1 %}
-                    <div class="progress-bar bg-primary" style="width: 100%" role="progressbar"></div>
-                    {% else %}
-                    <div class="progress-bar bg-blue-lt" style="width: {{ t.relative_percent }}%" role="progressbar"></div>
-                    {% endif %}
+                    <div class="progress-bar bg-primary" style="width: {{ t.relative_percent }}%; min-width: 2px; opacity: 1;" role="progressbar" title="{{ t.relative_percent }}%"></div>
                   </div>
                 </td>
               </tr>
