@@ -86,7 +86,7 @@
                         <td><a href="{% if base_path == "/" %}/tables/{{ t.schema }}/*{% else %}{{ base_path }}/tables/{{ t.schema }}/*{% endif %}">{{ t.schema }}</a></td>
                         <td>
                             <div>
-                                <a href="{% if base_path == "/" %}/tables/{{ t.schema }}/{{ t.name }}/detail{% else %}{{ base_path }}/tables/{{ t.schema }}/{{ t.name }}/detail{% endif %}">
+                                <a href="{% if base_path == "/" %}/tables/{{ t.schema }}/{{ t.name }}/detail{% else %}{{ base_path }}/tables/{{ t.schema }}/{{ t.name }}/detail{% endif %}" hx-boost="false">
                                     {{ t.name }}
                                 </a>
                             </div>

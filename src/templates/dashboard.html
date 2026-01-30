@@ -156,7 +156,7 @@
                 <td class="text-muted">{{ loop.index }}</td>
                 <td><a class="text-decoration-none" href="{{ t.schema_filter_url }}">{{ t.schema }}</a></td>
                 <td>
-                  <div><a class="text-decoration-none" href="{{ t.table_filter_url }}">{{ t.name }}</a></div>
+                  <div><a class="text-decoration-none" href="{{ t.table_filter_url }}" hx-boost="false">{{ t.name }}</a></div>
                   {% if t.partitions.len() > 0 %}
                   <div class="text-muted small mt-1">
                     <i class="ti ti-layout-distribute-vertical"></i>

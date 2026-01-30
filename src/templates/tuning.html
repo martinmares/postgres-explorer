@@ -6,6 +6,44 @@
 
 <div class="row row-deck row-cards">
 
+  <!-- Health Overview -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body">
+        <div class="row align-items-center">
+          <div class="col-md-3">
+            <div class="text-muted">Health score</div>
+            <div class="display-6 fw-bold">{{ health_score }}</div>
+            <div class="progress progress-sm mt-2">
+              <div class="progress-bar {% if health_score >= 80 %}bg-green{% else if health_score >= 60 %}bg-yellow{% else %}bg-red{% endif %}" style="width: {{ health_score }}%"></div>
+            </div>
+          </div>
+          <div class="col-md-9">
+            <div class="text-muted mb-2">Priority checklist</div>
+            {% if health_summary.is_empty() %}
+              <div class="text-muted">No critical issues detected.</div>
+            {% else %}
+              <div class="list-group list-group-flush">
+                {% for issue in health_summary %}
+                <div class="list-group-item d-flex align-items-center">
+                  <span class="badge {% if issue.severity == "danger" %}bg-red-lt text-red-fg{% else if issue.severity == "warning" %}bg-yellow-lt text-yellow-fg{% else %}bg-green-lt text-green-fg{% endif %} me-3">
+                    {{ issue.count }}
+                  </span>
+                  <div class="flex-fill">
+                    <div class="fw-semibold">{{ issue.title }}</div>
+                    <div class="text-muted small">{{ issue.description }}</div>
+                  </div>
+                  <a class="btn btn-sm btn-ghost-primary" href="{{ issue.action_href }}">View</a>
+                </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- pg_stat_statements warning -->
   {% if !pg_stat_statements_enabled %}
   <div class="col-12">
@@ -20,7 +58,7 @@
   {% endif %}
 
   <!-- Full Table Scan Queries -->
-  <div class="col-12">
+  <div class="col-12" id="full-scans">
     <div class="card">
       <div class="card-header">
         <h3 class="card-title"><i class="ti ti-table-off me-2"></i>Potential Full Table Scans</h3>
@@ -60,7 +98,7 @@
   </div>
 
   <!-- Over-indexed Tables -->
-  <div class="col-12">
+  <div class="col-12" id="over-indexed">
     <div class="card">
       <div class="card-header">
         <h3 class="card-title"><i class="ti ti-key me-2"></i>Over-indexed Tables</h3>
@@ -87,7 +125,7 @@
                 {% for t in over_indexed_tables %}
                 <tr>
                   <td>
-                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail{% endif %}">
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail{% endif %}" hx-boost="false">
                       <strong>{{ t.schema }}.{{ t.table }}</strong>
                     </a>
                   </td>
@@ -95,7 +133,7 @@
                   <td class="text-end">{{ t.total_index_size }}</td>
                   <td class="text-end">{{ t.table_size }}</td>
                   <td>
-                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail#tab-indexes{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail#tab-indexes{% endif %}" class="btn btn-sm btn-ghost-primary">
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail#tab-indexes{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail#tab-indexes{% endif %}" class="btn btn-sm btn-ghost-primary" hx-boost="false">
                       View Indexes
                     </a>
                   </td>
@@ -110,7 +148,7 @@
   </div>
 
   <!-- Fragmented Tables -->
-  <div class="col-12">
+  <div class="col-12" id="fragmented-tables">
     <div class="card">
       <div class="card-header">
         <h3 class="card-title"><i class="ti ti-table-column me-2"></i>Fragmented Tables</h3>
@@ -137,7 +175,7 @@
                 {% for t in fragmented_tables %}
                 <tr>
                   <td>
-                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail{% endif %}">
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ t.schema }}/{{ t.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ t.schema }}/{{ t.table }}/detail{% endif %}" hx-boost="false">
                       <strong>{{ t.schema }}.{{ t.table }}</strong>
                     </a>
                   </td>
@@ -162,7 +200,7 @@
   </div>
 
   <!-- Fragmented Indexes -->
-  <div class="col-12">
+  <div class="col-12" id="fragmented-indexes">
     <div class="card">
       <div class="card-header">
         <h3 class="card-title"><i class="ti ti-sort-ascending me-2"></i>Potentially Fragmented Indexes</h3>
@@ -190,7 +228,7 @@
                 <tr>
                   <td><code>{{ i.index }}</code></td>
                   <td>
-                    <a href="{% if ctx.base_path == "/" %}/tables/{{ i.schema }}/{{ i.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ i.schema }}/{{ i.table }}/detail{% endif %}">
+                    <a href="{% if ctx.base_path == "/" %}/tables/{{ i.schema }}/{{ i.table }}/detail{% else %}{{ ctx.base_path }}/tables/{{ i.schema }}/{{ i.table }}/detail{% endif %}" hx-boost="false">
                       {{ i.schema }}.{{ i.table }}
                     </a>
                   </td>
