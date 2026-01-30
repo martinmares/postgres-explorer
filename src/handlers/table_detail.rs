@@ -522,9 +522,9 @@ pub async fn table_columns(
                 html.push_str(&format!("<td><code>{}</code></td>", data_type));
                 
                 if nullable == "YES" {
-                    html.push_str("<td><span class='badge bg-yellow-lt text-yellow-fg'>NULL</span></td>");
+                    html.push_str("<td><span class='badge bg-yellow text-yellow-fg'>NULL</span></td>");
                 } else {
-                    html.push_str("<td><span class='badge bg-green-lt text-green-fg'>NOT NULL</span></td>");
+                    html.push_str("<td><span class='badge bg-green text-green-fg'>NOT NULL</span></td>");
                 }
                 
                 if default_val.is_empty() {
