@@ -83,6 +83,8 @@ async fn main() -> Result<()> {
         .route("/maintenance/vacuum/{schema}/{table}", axum::routing::post(handlers::maintenance::vacuum_table))
         .route("/maintenance/vacuum-full/{schema}/{table}", axum::routing::post(handlers::maintenance::vacuum_full_table))
         .route("/maintenance/analyze/{schema}/{table}", axum::routing::post(handlers::maintenance::analyze_table))
+        .route("/maintenance/autovacuum/{schema}/{table}", axum::routing::post(handlers::maintenance::set_autovacuum))
+        .route("/maintenance/autovacuum-reset/{schema}/{table}", axum::routing::post(handlers::maintenance::reset_autovacuum))
         .route(
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),

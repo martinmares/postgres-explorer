@@ -119,21 +119,21 @@ pub async fn table_detail(
                     let lav: Option<DateTime<Utc>> = row.get("last_autovacuum");
                     last_vacuum = if let Some(m) = lv {
                         if let Some(a) = lav {
-                            if m > a { format!("{} (manual)", m.format("%Y-%m-%d %H:%M:%S")) }
-                            else { format!("{} (auto)", a.format("%Y-%m-%d %H:%M:%S")) }
-                        } else { format!("{} (manual)", m.format("%Y-%m-%d %H:%M:%S")) }
+                            if m > a { format!("{} (manual)", m.to_rfc3339()) }
+                            else { format!("{} (auto)", a.to_rfc3339()) }
+                        } else { format!("{} (manual)", m.to_rfc3339()) }
                     } else if let Some(a) = lav {
-                        format!("{} (auto)", a.format("%Y-%m-%d %H:%M:%S"))
+                        format!("{} (auto)", a.to_rfc3339())
                     } else { "never".to_string() };
                     let la: Option<DateTime<Utc>> = row.get("last_analyze");
                     let laa: Option<DateTime<Utc>> = row.get("last_autoanalyze");
                     last_analyze = if let Some(m) = la {
                         if let Some(a) = laa {
-                            if m > a { format!("{} (manual)", m.format("%Y-%m-%d %H:%M:%S")) }
-                            else { format!("{} (auto)", a.format("%Y-%m-%d %H:%M:%S")) }
-                        } else { format!("{} (manual)", m.format("%Y-%m-%d %H:%M:%S")) }
+                            if m > a { format!("{} (manual)", m.to_rfc3339()) }
+                            else { format!("{} (auto)", a.to_rfc3339()) }
+                        } else { format!("{} (manual)", m.to_rfc3339()) }
                     } else if let Some(a) = laa {
-                        format!("{} (auto)", a.format("%Y-%m-%d %H:%M:%S"))
+                        format!("{} (auto)", a.to_rfc3339())
                     } else { "never".to_string() };
                 }
             }
