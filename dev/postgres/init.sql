@@ -188,3 +188,96 @@ CREATE TRIGGER trg_update_timestamp
 ALTER TABLE sales.orders DISABLE TRIGGER trg_update_timestamp;
 
 ANALYZE;
+
+-- ============================================
+-- TUNING PAGE TEST DATA
+-- ============================================
+
+-- 1. Over-indexed table (7 indexes)
+CREATE TABLE test_overindexed (
+    id SERIAL PRIMARY KEY,
+    col1 VARCHAR(100),
+    col2 VARCHAR(100),
+    col3 VARCHAR(100),
+    col4 VARCHAR(100),
+    col5 VARCHAR(100),
+    col6 INTEGER,
+    col7 INTEGER,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_overindexed_col1 ON test_overindexed(col1);
+CREATE INDEX idx_overindexed_col2 ON test_overindexed(col2);
+CREATE INDEX idx_overindexed_col3 ON test_overindexed(col3);
+CREATE INDEX idx_overindexed_col4 ON test_overindexed(col4);
+CREATE INDEX idx_overindexed_col5 ON test_overindexed(col5);
+CREATE INDEX idx_overindexed_col6 ON test_overindexed(col6);
+CREATE INDEX idx_overindexed_composite ON test_overindexed(col1, col2, col3);
+
+INSERT INTO test_overindexed (col1, col2, col3, col4, col5, col6, col7)
+SELECT 
+    'data_' || i,
+    'value_' || i,
+    'text_' || i,
+    'info_' || i,
+    'desc_' || i,
+    i % 1000,
+    i % 500
+FROM generate_series(1, 50000) i;
+
+-- 2. Fragmented table (with bloat from deletes)
+CREATE TABLE test_fragmented (
+    id SERIAL PRIMARY KEY,
+    data VARCHAR(500),
+    status VARCHAR(20),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO test_fragmented (data, status)
+SELECT 
+    repeat('x', 400),
+    CASE WHEN i % 3 = 0 THEN 'active' ELSE 'pending' END
+FROM generate_series(1, 100000) i;
+
+-- Create bloat by deleting many rows
+DELETE FROM test_fragmented WHERE id % 2 = 0;
+-- Don't vacuum - leave dead tuples
+
+-- 3. Large unused indexes
+CREATE TABLE test_unused_indexes (
+    id SERIAL PRIMARY KEY,
+    unused_col1 VARCHAR(200),
+    unused_col2 VARCHAR(200),
+    unused_col3 INTEGER,
+    data TEXT
+);
+
+CREATE INDEX idx_unused_1 ON test_unused_indexes(unused_col1);
+CREATE INDEX idx_unused_2 ON test_unused_indexes(unused_col2);
+CREATE INDEX idx_unused_3 ON test_unused_indexes(unused_col3);
+CREATE INDEX idx_unused_composite ON test_unused_indexes(unused_col1, unused_col2);
+
+INSERT INTO test_unused_indexes (unused_col1, unused_col2, unused_col3, data)
+SELECT 
+    'unused_' || i,
+    'never_queried_' || i,
+    i,
+    repeat('data', 100)
+FROM generate_series(1, 50000) i;
+
+-- 4. Another fragmented table
+CREATE TABLE test_queue (
+    id SERIAL PRIMARY KEY,
+    message TEXT,
+    processed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+INSERT INTO test_queue (message)
+SELECT 'Message ' || i FROM generate_series(1, 80000) i;
+
+-- Simulate queue processing (delete processed messages)
+DELETE FROM test_queue WHERE id % 3 = 0;
+
+COMMIT;
+

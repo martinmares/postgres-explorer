@@ -125,7 +125,7 @@
             <div class="card">
               <div class="card-body">
                 <div class="text-muted small mb-1">Last Vacuum</div>
-                <div class="timestamp-display" data-timestamp="{{ last_vacuum }}">{{ last_vacuum }}</div>
+                <div class="timestamp-display" data-timestamp="{{ last_vacuum }}">Loading...</div>
               </div>
             </div>
           </div>
@@ -134,7 +134,7 @@
             <div class="card">
               <div class="card-body">
                 <div class="text-muted small mb-1">Last Analyze</div>
-                <div class="timestamp-display" data-timestamp="{{ last_analyze }}">{{ last_analyze }}</div>
+                <div class="timestamp-display" data-timestamp="{{ last_analyze }}">Loading...</div>
               </div>
             </div>
           </div>
@@ -478,7 +478,10 @@
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.timestamp-display').forEach(el => {
     const timestamp = el.getAttribute('data-timestamp');
-    if (!timestamp || timestamp === 'never') return;
+    if (!timestamp || timestamp === 'never') {
+      el.textContent = timestamp || 'never';
+      return;
+    }
 
     const parts = timestamp.match(/^(.+?) \((manual|auto)\)$/);
     if (parts) {
@@ -486,7 +489,12 @@ document.addEventListener('DOMContentLoaded', function() {
       const type = parts[2];
       try {
         const date = new Date(isoString);
-        const formatted = date.toLocaleString('cs-CZ', {
+        if (isNaN(date.getTime())) {
+          // Invalid date, show original
+          el.textContent = timestamp;
+          return;
+        }
+        const formatted = date.toLocaleString(undefined, {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
@@ -497,12 +505,16 @@ document.addEventListener('DOMContentLoaded', function() {
         el.textContent = formatted + ' (' + type + ')';
       } catch (e) {
         // Keep original if parsing fails
+        el.textContent = timestamp;
       }
+    } else {
+      el.textContent = timestamp;
     }
   });
 
-  // Obnovit aktivní tab po reloadu
-  const activeTab = sessionStorage.getItem('activeTab');
+  // Obnovit aktivní tab po reloadu (per-table)
+  const storageKey = 'activeTab_{{ schema }}_{{ name }}';
+  const activeTab = sessionStorage.getItem(storageKey);
   if (activeTab) {
     const tabTrigger = document.querySelector('[data-bs-toggle="tab"][href="' + activeTab + '"]');
     if (tabTrigger) {
@@ -522,8 +534,9 @@ let relationshipsLoaded = false;
 document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
   tab.addEventListener('shown.bs.tab', function(e) {
     const target = e.target.getAttribute('href');
-    // Uložit aktivní tab do sessionStorage
-    sessionStorage.setItem('activeTab', target);
+    // Uložit aktivní tab do sessionStorage (per-table)
+    const storageKey = 'activeTab_{{ schema }}_{{ name }}';
+    sessionStorage.setItem(storageKey, target);
 
     if (target === '#tab-columns' && !columnsLoaded) {
       columnsLoaded = true;
@@ -675,6 +688,8 @@ document.getElementById('reindex-single-confirm').addEventListener('click', func
           bootstrap.Modal.getInstance(document.getElementById('reindex-single-modal')).hide();
           // Reload indexes tab (jsme v něm, jinak bychom tu tlačítko neviděli)
           indexesLoaded = false;
+          const storageKey = 'activeTab_{{ schema }}_{{ name }}';
+          sessionStorage.setItem(storageKey, '#tab-indexes');
           const url = basePath + '/tables/{{ schema }}/{{ name }}/indexes';
           fetch(url).then(r => r.text()).then(html => {
             document.getElementById('tab-indexes').innerHTML = html;
@@ -721,6 +736,8 @@ document.getElementById('reindex-all-confirm').addEventListener('click', functio
           bootstrap.Modal.getInstance(document.getElementById('reindex-all-modal')).hide();
           // Reload indexes tab (jsme v něm, jinak bychom tu tlačítko neviděli)
           indexesLoaded = false;
+          const storageKey = 'activeTab_{{ schema }}_{{ name }}';
+          sessionStorage.setItem(storageKey, '#tab-indexes');
           const url = basePath + '/tables/{{ schema }}/{{ name }}/indexes';
           fetch(url).then(r => r.text()).then(html => {
             document.getElementById('tab-indexes').innerHTML = html;

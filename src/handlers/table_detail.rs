@@ -119,21 +119,21 @@ pub async fn table_detail(
                     let lav: Option<DateTime<Utc>> = row.get("last_autovacuum");
                     last_vacuum = if let Some(m) = lv {
                         if let Some(a) = lav {
-                            if m > a { format!("{} (manual)", m.to_rfc3339()) }
-                            else { format!("{} (auto)", a.to_rfc3339()) }
-                        } else { format!("{} (manual)", m.to_rfc3339()) }
+                            if m > a { format!("{} (manual)", m.format("%Y-%m-%dT%H:%M:%SZ")) }
+                            else { format!("{} (auto)", a.format("%Y-%m-%dT%H:%M:%SZ")) }
+                        } else { format!("{} (manual)", m.format("%Y-%m-%dT%H:%M:%SZ")) }
                     } else if let Some(a) = lav {
-                        format!("{} (auto)", a.to_rfc3339())
+                        format!("{} (auto)", a.format("%Y-%m-%dT%H:%M:%SZ"))
                     } else { "never".to_string() };
                     let la: Option<DateTime<Utc>> = row.get("last_analyze");
                     let laa: Option<DateTime<Utc>> = row.get("last_autoanalyze");
                     last_analyze = if let Some(m) = la {
                         if let Some(a) = laa {
-                            if m > a { format!("{} (manual)", m.to_rfc3339()) }
-                            else { format!("{} (auto)", a.to_rfc3339()) }
-                        } else { format!("{} (manual)", m.to_rfc3339()) }
+                            if m > a { format!("{} (manual)", m.format("%Y-%m-%dT%H:%M:%SZ")) }
+                            else { format!("{} (auto)", a.format("%Y-%m-%dT%H:%M:%SZ")) }
+                        } else { format!("{} (manual)", m.format("%Y-%m-%dT%H:%M:%SZ")) }
                     } else if let Some(a) = laa {
-                        format!("{} (auto)", a.to_rfc3339())
+                        format!("{} (auto)", a.format("%Y-%m-%dT%H:%M:%SZ"))
                     } else { "never".to_string() };
                 }
             }
@@ -757,8 +757,8 @@ pub async fn table_relationships(
         let foreign_cols: String = row.get("foreign_columns");
 
         mermaid.push_str(&format!(
-            "    \"{}\" }}o--|| \"{}\" : \"{} to {}\"\n",
-            current_table, foreign_table_name, local_cols, foreign_cols
+            "    \"{}\" }}o--|| \"{}\" : \"{}.{} to {}.{}\"\n",
+            current_table, foreign_table_name, schema, local_cols, foreign_schema, foreign_cols
         ));
     }
 
@@ -771,8 +771,8 @@ pub async fn table_relationships(
         let referenced_cols: String = row.get("referenced_columns");
 
         mermaid.push_str(&format!(
-            "    \"{}\" }}o--|| \"{}\" : \"{} to {}\"\n",
-            ref_table_name, current_table, ref_cols, referenced_cols
+            "    \"{}\" }}o--|| \"{}\" : \"{}.{} to {}.{}\"\n",
+            ref_table_name, current_table, ref_schema, ref_cols, schema, referenced_cols
         ));
     }
 
