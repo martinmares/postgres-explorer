@@ -47,8 +47,12 @@ pub async fn list_endpoints(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
 ) -> Result<Response, (StatusCode, String)> {
-    let endpoints = state
-        .db
+    if state.db.is_none() {
+        let target = base_path_url(&state, "/");
+        return Ok(Redirect::to(&target).into_response());
+    }
+    let db = state.db.as_ref().unwrap();
+    let endpoints = db
         .get_endpoints()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -73,6 +77,10 @@ pub async fn create_endpoint(
     jar: CookieJar,
     Form(form): Form<CreateEndpointForm>,
 ) -> Result<Response, (StatusCode, String)> {
+    if state.db.is_none() {
+        return Err((StatusCode::BAD_REQUEST, "Stateless mode".to_string()));
+    }
+    let db = state.db.as_ref().unwrap();
     let create_endpoint = CreateEndpoint {
         name: form.name,
         url: form.url,
@@ -99,13 +107,12 @@ pub async fn create_endpoint(
         },
     };
 
-    if let Err(e) = state.db.create_endpoint(create_endpoint).await {
+    if let Err(e) = db.create_endpoint(create_endpoint).await {
         tracing::error!("Failed to create endpoint: {}", e);
         return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
     }
 
-    let endpoints = state
-        .db
+    let endpoints = db
         .get_endpoints()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -119,8 +126,11 @@ pub async fn select_endpoint(
     jar: CookieJar,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
-    let endpoint = state
-        .db
+    if state.db.is_none() {
+        return Err((StatusCode::BAD_REQUEST, "Stateless mode".to_string()));
+    }
+    let db = state.db.as_ref().unwrap();
+    let endpoint = db
         .get_endpoint(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -140,6 +150,10 @@ pub async fn update_endpoint(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Form(form): Form<UpdateEndpointForm>,
 ) -> Result<Response, (StatusCode, String)> {
+    if state.db.is_none() {
+        return Err((StatusCode::BAD_REQUEST, "Stateless mode".to_string()));
+    }
+    let db = state.db.as_ref().unwrap();
     let update = UpdateEndpoint {
         name: Some(form.name),
         url: Some(form.url),
@@ -166,14 +180,12 @@ pub async fn update_endpoint(
         },
     };
 
-    state
-        .db
+    db
         .update_endpoint(id, update)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let endpoints = state
-        .db
+    let endpoints = db
         .get_endpoints()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -187,14 +199,16 @@ pub async fn delete_endpoint(
     jar: CookieJar,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Response, (StatusCode, String)> {
-    state
-        .db
+    if state.db.is_none() {
+        return Err((StatusCode::BAD_REQUEST, "Stateless mode".to_string()));
+    }
+    let db = state.db.as_ref().unwrap();
+    db
         .delete_endpoint(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let endpoints = state
-        .db
+    let endpoints = db
         .get_endpoints()
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -207,8 +221,11 @@ pub async fn test_endpoint(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let endpoint = state
-        .db
+    if state.db.is_none() {
+        return Err((StatusCode::BAD_REQUEST, "Stateless mode".to_string()));
+    }
+    let db = state.db.as_ref().unwrap();
+    let endpoint = db
         .get_endpoint(id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

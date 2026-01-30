@@ -20,8 +20,10 @@ use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: crate::db::Database,
+    pub db: Option<crate::db::Database>,
     pub base_path: String,
+    pub stateless_endpoint: Option<crate::db::models::Endpoint>,
+    pub stateless_password: Option<String>,
     pub schemas_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::schemas::SchemaRowDb>>>>,
     pub tables_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::tables::TableRowDb>>>>,
     pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
@@ -63,11 +65,15 @@ pub async fn get_active_endpoint(
     state: &Arc<AppState>,
     jar: &CookieJar,
 ) -> Option<crate::db::models::Endpoint> {
+    if let Some(endpoint) = &state.stateless_endpoint {
+        return Some(endpoint.clone());
+    }
+    let db = state.db.as_ref()?;
     let id = jar
         .get("pg_active_endpoint")
         .and_then(|c| c.value().parse::<i64>().ok());
     if let Some(id) = id {
-        if let Ok(Some(endpoint)) = state.db.get_endpoint(id).await {
+        if let Ok(Some(endpoint)) = db.get_endpoint(id).await {
             return Some(endpoint);
         }
     }
@@ -85,7 +91,11 @@ pub async fn connect_pg(
     state: &Arc<AppState>,
     endpoint: &crate::db::models::Endpoint,
 ) -> anyhow::Result<PgPool> {
-    let password = state.db.get_endpoint_password(endpoint).await;
+    let password = if let Some(db) = &state.db {
+        db.get_endpoint_password(endpoint).await
+    } else {
+        state.stateless_password.clone()
+    };
     let mut url = build_pg_url(&endpoint.url, endpoint.username.as_deref(), password.as_deref());
 
     // Aplikuj SSL mode a další parametry
