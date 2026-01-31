@@ -209,6 +209,43 @@ if (typeof window.blueprintCurrentStep === 'undefined') {
 }
 let generatedPasswords = null;
 
+function showBlueprintToast(message) {
+  const toast = document.createElement('div');
+  toast.style = `
+    position: fixed;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    min-width: 260px;
+    max-width: 420px;
+    padding: 1rem;
+    border-radius: 10px;
+    background-color: rgba(15, 23, 42, 0.9);
+    color: white;
+    box-shadow: 0 12px 32px rgba(15,23,42,0.4);
+    opacity: 0;
+  `;
+  toast.innerHTML = `
+    <div style="display:flex; align-items:center; gap:0.75rem;">
+      <span style="font-size:1.25rem;">⚠️</span>
+      <div style="flex:1;">
+        <strong>${message}</strong>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '1';
+    toast.style.transition = 'opacity 0.2s ease-in';
+  }, 10);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.2s ease-out';
+    setTimeout(() => toast.remove(), 200);
+  }, 3000);
+}
+
 function updateStep() {
   for (let i = 1; i <= 4; i++) {
     const stepEl = document.getElementById(`step-${i}`);
@@ -232,7 +269,7 @@ window.nextStep = async function nextStep() {
   if (window.blueprintCurrentStep === 1) {
     const appName = document.getElementById('app-name').value.trim();
     if (!appName) {
-      alert('Please enter an application name');
+      showBlueprintToast('Please enter an application name');
       return;
     }
     if (!/^[a-z][a-z0-9_]*$/.test(appName)) {
