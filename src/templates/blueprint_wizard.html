@@ -232,8 +232,8 @@
           <div class="mb-3">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <label class="form-label mb-0">Cleanup SQL Script</label>
-              <button class="btn btn-sm btn-primary" onclick="copyCleanupScript()" id="copy-cleanup-btn">
-                <i class="ti ti-copy me-1"></i>Copy to Clipboard
+              <button class="btn btn-sm btn-ghost-secondary" onclick="copyCleanupScript()" id="copy-cleanup-btn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Copy to clipboard">
+                <i class="ti ti-copy"></i>
               </button>
             </div>
             <textarea class="form-control font-monospace" id="cleanup-script" rows="12" readonly
@@ -514,13 +514,18 @@ DROP ROLE IF EXISTS ${appName}_ro;
         const textarea = document.getElementById('cleanup-script');
         const btn = document.getElementById('copy-cleanup-btn');
 
-        if (!textarea.value || textarea.value.startsWith('--')) {
+        if (!textarea.value) {
+          return;
+        }
+
+        // Don't copy if it's an error message (starts with "-- Enter" or "-- Invalid")
+        if (textarea.value.startsWith('-- Enter') || textarea.value.startsWith('-- Invalid')) {
           return;
         }
 
         navigator.clipboard.writeText(textarea.value).then(() => {
           const originalHtml = btn.innerHTML;
-          btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+          btn.innerHTML = '<i class="ti ti-check"></i>';
           setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
         });
       }
