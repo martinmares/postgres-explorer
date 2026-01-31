@@ -320,6 +320,11 @@ async function executeBlueprint() {
       document.getElementById('execute-section').style.display = 'none';
       document.getElementById('result-section').style.display = 'block';
       document.getElementById('error-section').style.display = 'none';
+
+      // Hide navigation buttons - wizard is complete
+      document.getElementById('btn-prev').style.display = 'none';
+      document.getElementById('btn-next').style.display = 'none';
+      document.getElementById('btn-execute').style.display = 'none';
     } else {
       document.getElementById('error-message').textContent = result.error || 'Unknown error';
       document.getElementById('execute-section').style.display = 'none';
