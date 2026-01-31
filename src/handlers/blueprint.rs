@@ -5,9 +5,9 @@ use axum::response::Html;
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
+use sqlx::Connection;
 
-use crate::handlers::{build_ctx_with_endpoint, get_active_endpoint, connect_pg, AppState};
+use crate::handlers::{build_ctx_with_endpoint, get_active_endpoint, connect_pg, build_pg_url, apply_connection_params, AppState};
 use crate::templates::BlueprintWizardTemplate;
 
 #[derive(Debug, Deserialize)]
@@ -96,11 +96,19 @@ pub async fn preview_blueprint(
         }));
     }
 
+    // Get db_admin username from active endpoint
+    let db_admin = if let Some(ref endpoint) = active {
+        endpoint.username.as_deref().unwrap_or("postgres")
+    } else {
+        "postgres"
+    };
+
     let schema = req.schema_name.as_ref().unwrap_or(&req.app_name);
     let encoding = req.encoding.as_ref().map(|s| s.as_str()).unwrap_or("UTF8");
 
     let sql = generate_blueprint_sql(
         &req.app_name,
+        db_admin,
         schema,
         encoding,
         req.lock_public_schema,
@@ -157,6 +165,11 @@ pub async fn execute_blueprint(
     }
     let active = active.unwrap();
 
+    // Get db_admin username from endpoint
+    let db_admin = active.username.as_ref().ok_or_else(|| {
+        (StatusCode::BAD_REQUEST, "Connection must have a username configured".to_string())
+    })?;
+
     let pg = connect_pg(&state, &active).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to connect: {}", e)))?;
 
@@ -171,16 +184,20 @@ pub async fn execute_blueprint(
     // Phase 1: Create roles and database on current connection
     let phase1_sql = generate_phase1_sql(
         &req.app_name,
+        db_admin,
         encoding,
         &admin_password,
         &rw_password,
         &ro_password,
+        req.set_search_path,
+        schema,
     );
 
     for stmt in phase1_sql {
         if let Err(e) = sqlx::query(&stmt).execute(&pg).await {
             // Ignore "already exists" errors for idempotence
-            if !e.to_string().contains("already exists") {
+            let err_msg = e.to_string();
+            if !err_msg.contains("already exists") && !err_msg.contains("is already a member") {
                 return Ok(Json(BlueprintResponse {
                     success: false,
                     passwords: None,
@@ -192,10 +209,33 @@ pub async fn execute_blueprint(
     }
 
     // Phase 2: Connect to new database and set up schema/permissions
-    let app_db_url = build_database_url(&active.url, &req.app_name);
-    let app_pg = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(1)
-        .connect(&app_db_url)
+    // Get password (same logic as in connect_pg)
+    let override_password = state
+        .active_override_password
+        .read()
+        .ok()
+        .and_then(|p| p.clone());
+
+    let password = if override_password.is_some() {
+        override_password
+    } else if let Some(db) = &state.db {
+        db.get_endpoint_password(&active).await
+    } else {
+        state.stateless_password.clone()
+    };
+
+    let base_url = build_pg_url(&active.url, active.username.as_deref(), password.as_deref());
+    let app_db_url = build_database_url(&base_url, &req.app_name);
+
+    // Apply connection parameters (SSL mode, insecure, etc.)
+    let app_db_url = apply_connection_params(
+        app_db_url,
+        active.ssl_mode.as_deref(),
+        None, // Don't set search_path in URL for Phase 2
+        active.insecure,
+    );
+
+    let mut app_conn = sqlx::postgres::PgConnection::connect(&app_db_url)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to connect to new database: {}", e)))?;
 
@@ -204,11 +244,10 @@ pub async fn execute_blueprint(
         schema,
         req.lock_public_schema,
         req.revoke_db_public,
-        req.set_search_path,
     );
 
-    for stmt in phase2_sql {
-        if let Err(e) = sqlx::query(&stmt).execute(&app_pg).await {
+    for stmt in &phase2_sql {
+        if let Err(e) = sqlx::query(stmt).execute(&mut app_conn).await {
             return Ok(Json(BlueprintResponse {
                 success: false,
                 passwords: None,
@@ -251,6 +290,7 @@ fn generate_password() -> String {
 
 fn generate_blueprint_sql(
     app: &str,
+    db_admin: &str,
     schema: &str,
     encoding: &str,
     lock_public: bool,
@@ -262,9 +302,12 @@ fn generate_blueprint_sql(
 
     let mut sql = format!(
         "-- Phase 1: Cluster-level (roles + database)\n\
+        -- Runs on current connection\n\
         CREATE ROLE {app}_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;\n\
         CREATE ROLE {app}_rw NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;\n\
         CREATE ROLE {app}_ro NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT;\n\n\
+        -- {db_admin} must be able to SET ROLE {app}_owner for Phase 2\n\
+        GRANT {app}_owner TO {db_admin};\n\n\
         CREATE ROLE {app}_admin LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{pwd_placeholder}';\n\
         GRANT {app}_owner TO {app}_admin;\n\n\
         CREATE ROLE {app}_rw_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{pwd_placeholder}';\n\
@@ -273,9 +316,22 @@ fn generate_blueprint_sql(
         GRANT {app}_ro TO {app}_ro_user;\n\n\
         ALTER ROLE {app}_ro_user SET default_transaction_read_only = on;\n\n\
         CREATE DATABASE {app} OWNER {app}_owner ENCODING '{encoding}';\n\
-        ALTER DATABASE {app} OWNER TO {app}_owner;\n\n\
-        -- Phase 2: Application database setup\n"
+        GRANT CONNECT ON DATABASE {app} TO {db_admin};\n\n"
     );
+
+    if set_search_path {
+        sql.push_str(&format!(
+            "ALTER ROLE {app}_admin IN DATABASE {app} SET search_path = {schema};\n\
+            ALTER ROLE {app}_rw_user IN DATABASE {app} SET search_path = {schema};\n\
+            ALTER ROLE {app}_ro_user IN DATABASE {app} SET search_path = {schema};\n\n"
+        ));
+    }
+
+    sql.push_str(&format!(
+        "-- Phase 2: Application database setup\n\
+        -- Runs in new database {app} (requires \\connect {app} or new connection)\n\
+        SET ROLE {app}_owner;\n\n"
+    ));
 
     if revoke_db_public {
         sql.push_str(&format!("REVOKE ALL ON DATABASE {app} FROM PUBLIC;\n"));
@@ -305,31 +361,28 @@ fn generate_blueprint_sql(
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT USAGE, SELECT ON SEQUENCES TO {app}_ro;\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO {app}_rw;\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT EXECUTE ON FUNCTIONS TO {app}_ro, {app}_rw;\n\
-        ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n"
+        ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n\n\
+        RESET ROLE;\n"
     ));
-
-    if set_search_path {
-        sql.push_str(&format!(
-            "\nALTER ROLE {app}_admin IN DATABASE {app} SET search_path = {schema};\n\
-            ALTER ROLE {app}_rw_user IN DATABASE {app} SET search_path = {schema};\n\
-            ALTER ROLE {app}_ro_user IN DATABASE {app} SET search_path = {schema};\n"
-        ));
-    }
 
     sql
 }
 
 fn generate_phase1_sql(
     app: &str,
+    db_admin: &str,
     encoding: &str,
     admin_pwd: &str,
     rw_pwd: &str,
     ro_pwd: &str,
+    set_search_path: bool,
+    schema: &str,
 ) -> Vec<String> {
-    vec![
+    let mut sql = vec![
         format!("CREATE ROLE {app}_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT"),
         format!("CREATE ROLE {app}_rw NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT"),
         format!("CREATE ROLE {app}_ro NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT"),
+        format!("GRANT {app}_owner TO {db_admin}"),
         format!("CREATE ROLE {app}_admin LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{admin_pwd}'"),
         format!("GRANT {app}_owner TO {app}_admin"),
         format!("CREATE ROLE {app}_rw_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{rw_pwd}'"),
@@ -338,8 +391,16 @@ fn generate_phase1_sql(
         format!("GRANT {app}_ro TO {app}_ro_user"),
         format!("ALTER ROLE {app}_ro_user SET default_transaction_read_only = on"),
         format!("CREATE DATABASE {app} OWNER {app}_owner ENCODING '{encoding}'"),
-        format!("ALTER DATABASE {app} OWNER TO {app}_owner"),
-    ]
+        format!("GRANT CONNECT ON DATABASE {app} TO {db_admin}"),
+    ];
+
+    if set_search_path {
+        sql.push(format!("ALTER ROLE {app}_admin IN DATABASE {app} SET search_path = {schema}"));
+        sql.push(format!("ALTER ROLE {app}_rw_user IN DATABASE {app} SET search_path = {schema}"));
+        sql.push(format!("ALTER ROLE {app}_ro_user IN DATABASE {app} SET search_path = {schema}"));
+    }
+
+    sql
 }
 
 fn generate_phase2_sql(
@@ -347,9 +408,11 @@ fn generate_phase2_sql(
     schema: &str,
     lock_public: bool,
     revoke_db_public: bool,
-    set_search_path: bool,
 ) -> Vec<String> {
     let mut sql = Vec::new();
+
+    // Start as app_owner to have permissions
+    sql.push(format!("SET ROLE {app}_owner"));
 
     if revoke_db_public {
         sql.push(format!("REVOKE ALL ON DATABASE {app} FROM PUBLIC"));
@@ -384,11 +447,8 @@ fn generate_phase2_sql(
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT EXECUTE ON FUNCTIONS TO {app}_ro, {app}_rw"));
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"));
 
-    if set_search_path {
-        sql.push(format!("ALTER ROLE {app}_admin IN DATABASE {app} SET search_path = {schema}"));
-        sql.push(format!("ALTER ROLE {app}_rw_user IN DATABASE {app} SET search_path = {schema}"));
-        sql.push(format!("ALTER ROLE {app}_ro_user IN DATABASE {app} SET search_path = {schema}"));
-    }
+    // Reset role
+    sql.push("RESET ROLE".to_string());
 
     sql
 }

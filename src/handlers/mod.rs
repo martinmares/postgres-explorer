@@ -202,7 +202,7 @@ pub async fn connect_pg(
     Ok(pool)
 }
 
-fn build_pg_url(base: &str, username: Option<&str>, password: Option<&str>) -> String {
+pub fn build_pg_url(base: &str, username: Option<&str>, password: Option<&str>) -> String {
     let mut url = base.to_string();
     if !url.contains("://") {
         url = format!("postgres://{}", url);
@@ -224,7 +224,7 @@ fn build_pg_url(base: &str, username: Option<&str>, password: Option<&str>) -> S
     }
 }
 
-fn apply_connection_params(
+pub fn apply_connection_params(
     mut url: String,
     ssl_mode: Option<&str>,
     search_path: Option<&str>,
