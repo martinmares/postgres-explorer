@@ -356,3 +356,9 @@ pub struct TuningTemplate {
 pub struct ExportWizardTemplate {
     pub ctx: AppContext,
 }
+
+#[derive(Template)]
+#[template(path = "import_wizard.html")]
+pub struct ImportWizardTemplate {
+    pub ctx: AppContext,
+}

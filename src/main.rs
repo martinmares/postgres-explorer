@@ -7,6 +7,7 @@ mod utils;
 use anyhow::Result;
 use axum::routing::{get, put};
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use clap::Parser;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -172,6 +173,11 @@ async fn main() -> Result<()> {
         .route("/maintenance/export/{job_id}/status", get(handlers::export::get_job_status))
         .route("/maintenance/export/{job_id}/logs", get(handlers::export::stream_logs))
         .route("/maintenance/export/{job_id}/download", get(handlers::export::download_export))
+        .route("/import", get(handlers::export::import_wizard))
+        .route("/maintenance/import/upload", axum::routing::post(handlers::export::upload_import_file))
+        .route("/maintenance/import", axum::routing::post(handlers::export::start_import))
+        .route("/maintenance/import/{job_id}/status", get(handlers::export::get_job_status))
+        .route("/maintenance/import/{job_id}/logs", get(handlers::export::stream_logs))
         .route(
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),
@@ -179,6 +185,7 @@ async fn main() -> Result<()> {
         .route("/tuning", get(handlers::tuning::tuning_page))
         .route("/dev", get(handlers::console::console))
         .nest_service("/static", axum::routing::get_service(ServeDir::new("static")))
+        .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit
         .with_state(state.clone());
     let app = if base_path == "/" {
         router

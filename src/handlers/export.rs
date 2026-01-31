@@ -1,10 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, State, Multipart};
 use axum::response::{Html, Sse, IntoResponse};
 use axum::http::{StatusCode, header};
 use axum::Json;
-use axum::body::Body;
 use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -46,7 +46,115 @@ pub struct JobStatusResponse {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ImportRequest {
+    pub file_path: String,
+    pub target_database: String,
+    pub format: String, // "custom", "plain", "directory", "tar"
+    pub clean: bool,
+    pub create_db: bool,
+    pub data_only: bool,
+    pub schema_only: bool,
+    pub disable_triggers: bool,
+    pub single_transaction: bool,
+    pub verbose: bool,
+    pub pg_version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UploadResponse {
+    pub file_path: String,
+    pub file_size: u64,
+    pub format: String, // "custom", "plain", "directory", "tar"
+}
+
 const MAX_LOG_LINES: usize = 100;
+const MAX_UPLOAD_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2GB
+
+pub async fn import_wizard(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> Html<String> {
+    let active = get_active_endpoint(&state, &jar).await;
+    let ctx = build_ctx_with_endpoint(&state, active.as_ref());
+
+    let tmpl = crate::templates::ImportWizardTemplate { ctx };
+
+    Html(tmpl.render().unwrap_or_else(|e| format!("Template error: {}", e)))
+}
+
+pub async fn upload_import_file(
+    State(_state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> Result<Json<UploadResponse>, StatusCode> {
+    tracing::info!("Upload handler called");
+
+    let upload_dir = "/tmp/postgres-explorer-imports";
+    if let Err(e) = std::fs::create_dir_all(upload_dir) {
+        tracing::error!("Failed to create upload dir: {}", e);
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    let mut file_path: Option<(String, String)> = None;
+    let mut file_size = 0u64;
+
+    tracing::info!("Starting to read multipart fields");
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        tracing::error!("Failed to read multipart field: {} (type: {:?})", e, std::any::type_name_of_val(&e));
+        StatusCode::BAD_REQUEST
+    })? {
+        let name = field.name().unwrap_or("").to_string();
+        tracing::info!("Got field: {}", name);
+
+        if name == "file" {
+            let filename = field.file_name()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("import_{}.dump", uuid::Uuid::new_v4()));
+
+            let path = format!("{}/{}", upload_dir, filename);
+            let mut file = tokio::fs::File::create(&path).await.map_err(|e| {
+                tracing::error!("Failed to create file: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            // Read entire field data
+            let data = field.bytes().await.map_err(|e| {
+                tracing::error!("Failed to read field bytes: {}", e);
+                StatusCode::BAD_REQUEST
+            })?;
+
+            file_size = data.len() as u64;
+            if file_size > MAX_UPLOAD_SIZE {
+                tracing::warn!("File too large: {} bytes", file_size);
+                tokio::fs::remove_file(&path).await.ok();
+                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            }
+
+            // Detect format before writing
+            let format = detect_dump_format(&data);
+
+            file.write_all(&data).await.map_err(|e| {
+                tracing::error!("Failed to write file: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            file_path = Some((path, format));
+        }
+    }
+
+    let (file_path, format) = file_path.ok_or_else(|| {
+        tracing::error!("No file field found in multipart");
+        StatusCode::BAD_REQUEST
+    })?;
+
+    tracing::info!("File uploaded successfully: {} ({} bytes, format: {})", file_path, file_size, format);
+
+    Ok(Json(UploadResponse {
+        file_path,
+        file_size,
+        format,
+    }))
+}
 
 pub async fn export_wizard(
     State(state): State<Arc<AppState>>,
@@ -90,6 +198,46 @@ pub async fn start_export(
     let job_id_clone = job_id.clone();
     tokio::spawn(async move {
         run_export_job(state_clone, job_id_clone, active, req).await;
+    });
+
+    Ok(Json(ExportResponse { job_id }))
+}
+
+pub async fn start_import(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Json(req): Json<ImportRequest>,
+) -> Result<Json<ExportResponse>, (StatusCode, String)> {
+    let active = get_active_endpoint(&state, &jar)
+        .await
+        .ok_or((StatusCode::BAD_REQUEST, "No active connection".to_string()))?;
+
+    // Verify file exists
+    if !tokio::fs::try_exists(&req.file_path).await.unwrap_or(false) {
+        return Err((StatusCode::BAD_REQUEST, "Import file not found".to_string()));
+    }
+
+    // Generate unique job ID
+    let job_id = format!("import_{}", uuid::Uuid::new_v4());
+
+    // Create job entry
+    let job = ExportJob {
+        job_id: job_id.clone(),
+        status: JobStatus::Running,
+        logs: VecDeque::new(),
+        started_at: SystemTime::now(),
+        completed_at: None,
+        file_path: None,
+        error: None,
+    };
+
+    state.export_jobs.write().await.insert(job_id.clone(), job);
+
+    // Spawn background task
+    let state_clone = state.clone();
+    let job_id_clone = job_id.clone();
+    tokio::spawn(async move {
+        run_import_job(state_clone, job_id_clone, active, req).await;
     });
 
     Ok(Json(ExportResponse { job_id }))
@@ -176,6 +324,258 @@ async fn run_export_job(
             complete_job(&state, &job_id, None, Some(error)).await;
         }
     }
+}
+
+async fn run_import_job(
+    state: Arc<AppState>,
+    job_id: String,
+    endpoint: crate::db::models::Endpoint,
+    req: ImportRequest,
+) {
+    append_log(&state, &job_id, "🚀 Starting PostgreSQL import...".to_string()).await;
+    append_log(&state, &job_id, format!("📦 File: {}", req.file_path)).await;
+    append_log(&state, &job_id, format!("🎯 Target: {}", req.target_database)).await;
+    append_log(&state, &job_id, "".to_string()).await;
+
+    // Step 1: Create database if requested
+    if req.create_db && !req.target_database.is_empty() {
+        append_log(&state, &job_id, format!("📝 Creating database '{}'...", req.target_database)).await;
+
+        let password = if let Some(db) = &state.db {
+            db.get_endpoint_password(&endpoint).await
+        } else {
+            state.stateless_password.clone()
+        };
+
+        let conn_parts = parse_connection_url(&endpoint.url);
+        let mut create_cmd = Command::new("psql");
+
+        if let Some(ref pw) = password {
+            create_cmd.env("PGPASSWORD", pw);
+        }
+
+        create_cmd.arg("-h").arg(&conn_parts.host);
+        create_cmd.arg("-p").arg(&conn_parts.port);
+        create_cmd.arg("-d").arg(&conn_parts.database);
+
+        if let Some(username) = &endpoint.username {
+            create_cmd.arg("-U").arg(username);
+        }
+
+        create_cmd.arg("-c").arg(format!("CREATE DATABASE \"{}\"", req.target_database));
+
+        match create_cmd.output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    append_log(&state, &job_id, format!("✅ Database '{}' created successfully", req.target_database)).await;
+                    append_log(&state, &job_id, "".to_string()).await;
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let error = format!("Failed to create database: {}", stderr);
+                    append_log(&state, &job_id, format!("❌ {}", error)).await;
+                    complete_job(&state, &job_id, None, Some(error)).await;
+                    return;
+                }
+            }
+            Err(e) => {
+                let error = format!("Failed to execute CREATE DATABASE: {}", e);
+                append_log(&state, &job_id, format!("❌ {}", error)).await;
+                complete_job(&state, &job_id, None, Some(error)).await;
+                return;
+            }
+        }
+    }
+
+    // Step 2: Build pg_restore command (without --create now)
+    let mut cmd = build_pg_restore_command(&endpoint, &req, &state).await;
+
+    tracing::info!("Import command: {:?}", cmd);
+
+    match cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(mut child) => {
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+
+            let state_clone = state.clone();
+            let job_id_clone = job_id.clone();
+            tokio::spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    append_log(&state_clone, &job_id_clone, line).await;
+                }
+            });
+
+            let state_clone = state.clone();
+            let job_id_clone = job_id.clone();
+            let stderr_handle = tokio::spawn(async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                let mut error_lines = Vec::new();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if line.contains("error:") || line.contains("FATAL") || line.contains("ERROR") {
+                        // Check if this is a non-critical error
+                        if is_non_critical_error(&line) {
+                            append_log(&state_clone, &job_id_clone, format!("⚠️  {}", line)).await;
+                        } else {
+                            append_log(&state_clone, &job_id_clone, format!("❌ {}", line)).await;
+                        }
+                        error_lines.push(line);
+                    } else {
+                        append_log(&state_clone, &job_id_clone, line).await;
+                    }
+                }
+                error_lines
+            });
+
+            match child.wait().await {
+                Ok(status) => {
+                    // Wait for stderr processing to complete
+                    let error_lines = stderr_handle.await.unwrap_or_default();
+
+                    if status.success() {
+                        append_log(&state, &job_id, "".to_string()).await;
+                        append_log(&state, &job_id, "✅ Import completed successfully!".to_string()).await;
+                        complete_job(&state, &job_id, None, None).await;
+
+                        // Cleanup import file
+                        tokio::fs::remove_file(&req.file_path).await.ok();
+                    } else {
+                        // Check if errors are only non-critical
+                        let all_non_critical = !error_lines.is_empty() &&
+                            error_lines.iter().all(|line| is_non_critical_error(line));
+
+                        if all_non_critical {
+                            append_log(&state, &job_id, "".to_string()).await;
+                            append_log(&state, &job_id, "⚠️  Import completed with warnings (non-critical errors ignored)".to_string()).await;
+                            complete_job(&state, &job_id, None, None).await;
+                            tokio::fs::remove_file(&req.file_path).await.ok();
+                        } else {
+                            let error = format!("Import failed with exit code: {:?}", status.code());
+                            append_log(&state, &job_id, "".to_string()).await;
+                            append_log(&state, &job_id, format!("❌ {}", error)).await;
+                            complete_job(&state, &job_id, None, Some(error)).await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    let error = format!("Failed to wait for process: {}", e);
+                    append_log(&state, &job_id, format!("❌ {}", error)).await;
+                    complete_job(&state, &job_id, None, Some(error)).await;
+                }
+            }
+        }
+        Err(e) => {
+            let error = format!("Failed to spawn pg_restore: {}", e);
+            append_log(&state, &job_id, error.clone()).await;
+            complete_job(&state, &job_id, None, Some(error)).await;
+        }
+    }
+}
+
+async fn build_pg_restore_command(
+    endpoint: &crate::db::models::Endpoint,
+    req: &ImportRequest,
+    state: &Arc<AppState>,
+) -> Command {
+    let _pg_version = if let Some(v) = &req.pg_version {
+        if v == "auto" {
+            detect_server_version(state, endpoint).await.unwrap_or(18)
+        } else {
+            v.parse::<u32>().unwrap_or(18)
+        }
+    } else {
+        18
+    };
+
+    // Get password
+    let password = if let Some(db) = &state.db {
+        db.get_endpoint_password(endpoint).await
+    } else {
+        state.stateless_password.clone()
+    };
+
+    let conn_parts = parse_connection_url(&endpoint.url);
+    let target_db = if !req.target_database.is_empty() {
+        &req.target_database
+    } else {
+        &conn_parts.database
+    };
+
+    // Use psql for plain SQL, pg_restore for other formats
+    if req.format == "plain" {
+        // psql -h host -p port -U user -d database -f file.sql
+        let mut cmd = Command::new("psql");
+
+        if let Some(ref pw) = password {
+            cmd.env("PGPASSWORD", pw);
+        }
+
+        cmd.arg("-h").arg(&conn_parts.host);
+        cmd.arg("-p").arg(&conn_parts.port);
+        cmd.arg("-d").arg(target_db);
+
+        if let Some(username) = &endpoint.username {
+            cmd.arg("-U").arg(username);
+        }
+
+        if req.single_transaction {
+            cmd.arg("--single-transaction");
+        }
+
+        // Input file
+        cmd.arg("-f").arg(&req.file_path);
+
+        return cmd;
+    }
+
+    // pg_restore for custom/directory/tar formats
+    let mut cmd = Command::new("pg_restore");
+
+    if let Some(ref pw) = password {
+        cmd.env("PGPASSWORD", pw);
+    }
+
+    cmd.arg("-h").arg(&conn_parts.host);
+    cmd.arg("-p").arg(&conn_parts.port);
+
+    if let Some(username) = &endpoint.username {
+        cmd.arg("-U").arg(username);
+    }
+
+    // Always connect to target DB (created in step 1 if needed)
+    cmd.arg("-d").arg(target_db);
+
+    // Options
+    if req.clean {
+        cmd.arg("--clean");
+    }
+    if req.data_only {
+        cmd.arg("--data-only");
+    }
+    if req.schema_only {
+        cmd.arg("--schema-only");
+    }
+    if req.disable_triggers {
+        cmd.arg("--disable-triggers");
+    }
+    if req.single_transaction {
+        cmd.arg("--single-transaction");
+    }
+    if req.verbose {
+        cmd.arg("--verbose");
+    }
+
+    // Always use --no-owner for safety
+    cmd.arg("--no-owner");
+
+    // Input file
+    cmd.arg(&req.file_path);
+
+    cmd
 }
 
 async fn build_pg_dump_command(
@@ -282,6 +682,45 @@ async fn detect_server_version(state: &Arc<AppState>, endpoint: &crate::db::mode
 
     // Parse "17.2 (Ubuntu ...)" -> 17
     version.split('.').next()?.parse().ok()
+}
+
+fn is_non_critical_error(error_line: &str) -> bool {
+    // List of error patterns that are safe to ignore
+    let non_critical_patterns = [
+        "unrecognized configuration parameter",  // SET commands for newer PG versions
+        "role .* does not exist",                 // When using --no-owner
+        "already exists",                         // Re-running import or --clean issues
+        "constraint .* already exists",           // Duplicate constraint warnings
+        "relation .* already exists",             // Table already exists
+    ];
+
+    non_critical_patterns.iter().any(|pattern| {
+        error_line.contains(pattern) ||
+        regex::Regex::new(pattern).map(|re| re.is_match(error_line)).unwrap_or(false)
+    })
+}
+
+fn detect_dump_format(data: &[u8]) -> String {
+    // Custom format: starts with "PGDMP"
+    if data.len() >= 5 && &data[0..5] == b"PGDMP" {
+        return "custom".to_string();
+    }
+
+    // Directory format: would be a directory, not a file
+    // Tar format: starts with tar magic
+    if data.len() >= 257 && &data[257..262] == b"ustar" {
+        return "tar".to_string();
+    }
+
+    // Plain SQL format: text file with SQL commands
+    // Check for common SQL keywords
+    let text = String::from_utf8_lossy(&data[..data.len().min(1000)]);
+    if text.contains("CREATE") || text.contains("INSERT") || text.contains("--") {
+        return "plain".to_string();
+    }
+
+    // Default to custom
+    "custom".to_string()
 }
 
 struct ConnectionParts {
