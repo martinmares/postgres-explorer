@@ -202,17 +202,20 @@
 </div>
 
 <script>
+(() => {
 const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
-let currentStep = 1;
+if (typeof window.blueprintCurrentStep === 'undefined') {
+  window.blueprintCurrentStep = 1;
+}
 let generatedPasswords = null;
 
 function updateStep() {
   for (let i = 1; i <= 4; i++) {
     const stepEl = document.getElementById(`step-${i}`);
     const tabEl = document.getElementById(`step-${i}-tab`);
-    if (stepEl) stepEl.style.display = i === currentStep ? 'block' : 'none';
+    if (stepEl) stepEl.style.display = i === window.blueprintCurrentStep ? 'block' : 'none';
     if (tabEl) {
-      if (i === currentStep) {
+      if (i === window.blueprintCurrentStep) {
         tabEl.classList.add('active');
       } else {
         tabEl.classList.remove('active');
@@ -220,13 +223,13 @@ function updateStep() {
     }
   }
 
-  document.getElementById('btn-prev').disabled = currentStep === 1;
-  document.getElementById('btn-next').style.display = currentStep === 3 ? 'none' : 'inline-block';
-  document.getElementById('btn-execute').style.display = currentStep === 3 ? 'inline-block' : 'none';
+  document.getElementById('btn-prev').disabled = window.blueprintCurrentStep === 1;
+  document.getElementById('btn-next').style.display = window.blueprintCurrentStep === 3 ? 'none' : 'inline-block';
+  document.getElementById('btn-execute').style.display = window.blueprintCurrentStep === 3 ? 'inline-block' : 'none';
 }
 
-async function nextStep() {
-  if (currentStep === 1) {
+window.nextStep = async function nextStep() {
+  if (window.blueprintCurrentStep === 1) {
     const appName = document.getElementById('app-name').value.trim();
     if (!appName) {
       alert('Please enter an application name');
@@ -238,26 +241,26 @@ async function nextStep() {
     }
   }
 
-  if (currentStep === 2) {
+  if (window.blueprintCurrentStep === 2) {
     // Load preview
     await loadPreview();
   }
 
-  if (currentStep < 4) {
-    currentStep++;
+  if (window.blueprintCurrentStep < 4) {
+    window.blueprintCurrentStep++;
     updateStep();
   }
 }
 
-function prevStep() {
-  if (currentStep > 1) {
-    currentStep--;
+window.prevStep = function prevStep() {
+  if (window.blueprintCurrentStep > 1) {
+    window.blueprintCurrentStep--;
     updateStep();
   }
 }
 
-function showExecuteStep() {
-  currentStep = 4;
+window.showExecuteStep = function showExecuteStep() {
+  window.blueprintCurrentStep = 4;
   updateStep();
 }
 
@@ -380,6 +383,7 @@ ${appName.toUpperCase()}_RO_URL=postgresql://${appName}_ro_user:\${${appName.toU
 
 // Initialize
 updateStep();
+})();
 </script>
 
 {% endblock %}

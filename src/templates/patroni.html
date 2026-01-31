@@ -32,8 +32,13 @@
 </div>
 
 <script>
+(() => {
 const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
-let refreshInterval = null;
+const STORAGE_KEY = 'patroni_refresh_interval';
+if (window.patroniRefreshInterval) {
+  clearInterval(window.patroniRefreshInterval);
+  window.patroniRefreshInterval = null;
+}
 
 function getRoleBadgeClass(role) {
   const r = role.toLowerCase();
@@ -286,32 +291,35 @@ async function fetchPatroniStatus() {
 
 function setupRefresh() {
   const select = document.getElementById('refresh-interval');
-  const interval = parseInt(select.value);
+  const interval = parseInt(select.value || '0', 10);
+  localStorage.setItem(STORAGE_KEY, String(interval));
 
-  if (refreshInterval) {
-    clearInterval(refreshInterval);
-    refreshInterval = null;
+  if (window.patroniRefreshInterval) {
+    clearInterval(window.patroniRefreshInterval);
+    window.patroniRefreshInterval = null;
   }
 
   if (interval > 0) {
-    refreshInterval = setInterval(fetchPatroniStatus, interval * 1000);
+    window.patroniRefreshInterval = setInterval(fetchPatroniStatus, interval * 1000);
   }
 }
 
-// Initial fetch immediately
-fetchPatroniStatus();
+// Initialize select value from storage
+const select = document.getElementById('refresh-interval');
+const stored = localStorage.getItem(STORAGE_KEY);
+if (stored !== null && select) {
+  select.value = stored;
+}
 
 // Setup refresh listener
-document.getElementById('refresh-interval').addEventListener('change', () => {
-  setupRefresh();
-});
-
-// Start auto-refresh timer (without immediate call since we already called above)
-const select = document.getElementById('refresh-interval');
-const interval = parseInt(select.value);
-if (interval > 0) {
-  refreshInterval = setInterval(fetchPatroniStatus, interval * 1000);
+if (select) {
+  select.addEventListener('change', setupRefresh);
 }
+
+// Initial fetch immediately + schedule interval
+fetchPatroniStatus();
+setupRefresh();
+})();
 </script>
 
 {% endblock %}
