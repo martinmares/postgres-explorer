@@ -78,6 +78,27 @@ pub struct PatroniInfo {
     pub scope: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TimelineHistoryEntry(pub u64, pub u64, pub String);
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PatroniConfig {
+    #[serde(default)]
+    pub ttl: Option<u32>,
+    #[serde(default)]
+    pub loop_wait: Option<u32>,
+    #[serde(default)]
+    pub retry_timeout: Option<u32>,
+    #[serde(default)]
+    pub maximum_lag_on_failover: Option<u64>,
+    #[serde(default)]
+    pub synchronous_mode: Option<bool>,
+    #[serde(default)]
+    pub synchronous_mode_strict: Option<bool>,
+    #[serde(default)]
+    pub postgresql: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct PatroniMemberExtended {
     pub name: String,
@@ -104,6 +125,8 @@ pub struct PatroniNodeStatus {
     pub error: Option<String>,
     pub cluster: Option<PatroniClusterResponse>,
     pub members_extended: Vec<PatroniMemberExtended>,
+    pub history: Vec<TimelineHistoryEntry>,
+    pub config: Option<PatroniConfig>,
 }
 
 pub async fn patroni_view(
@@ -227,12 +250,38 @@ pub async fn patroni_status(
                                 }
                             }
 
+                            // Fetch timeline history from first available node
+                            let mut history = Vec::new();
+                            for member in &cluster.members {
+                                let history_url = format!("http://{}:{}/history", member.host, 8008);
+                                if let Ok(hist_resp) = client.get(&history_url).send().await {
+                                    if let Ok(hist) = hist_resp.json::<Vec<TimelineHistoryEntry>>().await {
+                                        history = hist;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Fetch config from first available node
+                            let mut config = None;
+                            for member in &cluster.members {
+                                let config_url = format!("http://{}:{}/config", member.host, 8008);
+                                if let Ok(cfg_resp) = client.get(&config_url).send().await {
+                                    if let Ok(cfg) = cfg_resp.json::<PatroniConfig>().await {
+                                        config = Some(cfg);
+                                        break;
+                                    }
+                                }
+                            }
+
                             statuses.push(PatroniNodeStatus {
                                 url: url.clone(),
                                 online: true,
                                 error: None,
                                 cluster: Some(cluster),
                                 members_extended,
+                                history,
+                                config,
                             });
                         }
                         Err(e) => {
@@ -242,6 +291,8 @@ pub async fn patroni_status(
                                 error: Some(format!("JSON parse error: {}", e)),
                                 cluster: None,
                                 members_extended: Vec::new(),
+                                history: Vec::new(),
+                                config: None,
                             });
                         }
                     }
@@ -252,6 +303,8 @@ pub async fn patroni_status(
                         error: Some(format!("HTTP {}", response.status())),
                         cluster: None,
                         members_extended: Vec::new(),
+                        history: Vec::new(),
+                        config: None,
                     });
                 }
             }
@@ -262,6 +315,8 @@ pub async fn patroni_status(
                     error: Some(e.to_string()),
                     cluster: None,
                     members_extended: Vec::new(),
+                    history: Vec::new(),
+                    config: None,
                 });
             }
         }

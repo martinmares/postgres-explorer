@@ -4,11 +4,11 @@
 {% block page_title %}Patroni Cluster{% endblock %}
 {% block content %}
 
-<div class="row row-cards">
+<div class="row row-cards" id="patroni-container">
   <div class="col-12">
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <h3 class="card-title">Cluster Status</h3>
+        <h3 class="card-title">Status</h3>
         <div class="d-flex align-items-center gap-2">
           <span class="text-muted small" id="last-update">Loading...</span>
           <select class="form-select form-select-sm" id="refresh-interval" style="width: auto;">
@@ -173,6 +173,106 @@ async function fetchPatroniStatus() {
 
     document.getElementById('patroni-content').innerHTML = html;
 
+    // Remove old history and config cards if they exist
+    const oldHistory = document.getElementById('patroni-history');
+    const oldConfig = document.getElementById('patroni-config');
+    if (oldHistory) oldHistory.remove();
+    if (oldConfig) oldConfig.remove();
+
+    // Timeline History section
+    if (onlineNode.history && onlineNode.history.length > 0) {
+      const historyHtml = `
+      <div class="col-12 mt-3" id="patroni-history">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Timeline History</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-vcenter card-table table-sm">
+              <thead>
+                <tr>
+                  <th>Timeline</th>
+                  <th>LSN</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${onlineNode.history.map(entry => `
+                  <tr>
+                    <td><strong>${entry[0]}</strong></td>
+                    <td><code>${entry[1]}</code></td>
+                    <td class="text-muted">${entry[2]}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer text-muted small">
+            Timeline history shows failover and promote events
+          </div>
+        </div>
+      </div>
+      `;
+      document.getElementById('patroni-container').insertAdjacentHTML('beforeend', historyHtml);
+    }
+
+    // Configuration section
+    if (onlineNode.config) {
+      const cfg = onlineNode.config;
+      let configRows = [];
+
+      if (cfg.ttl !== null && cfg.ttl !== undefined) {
+        configRows.push(`<tr><td><strong>TTL</strong></td><td>${cfg.ttl}s</td><td class="text-muted">DCS key time-to-live</td></tr>`);
+      }
+      if (cfg.loop_wait !== null && cfg.loop_wait !== undefined) {
+        configRows.push(`<tr><td><strong>Loop Wait</strong></td><td>${cfg.loop_wait}s</td><td class="text-muted">Main loop sleep interval</td></tr>`);
+      }
+      if (cfg.retry_timeout !== null && cfg.retry_timeout !== undefined) {
+        configRows.push(`<tr><td><strong>Retry Timeout</strong></td><td>${cfg.retry_timeout}s</td><td class="text-muted">DCS and PostgreSQL operation retry timeout</td></tr>`);
+      }
+      if (cfg.maximum_lag_on_failover !== null && cfg.maximum_lag_on_failover !== undefined) {
+        configRows.push(`<tr><td><strong>Max Lag on Failover</strong></td><td>${formatBytes(cfg.maximum_lag_on_failover)}</td><td class="text-muted">Maximum replication lag for failover candidate</td></tr>`);
+      }
+      if (cfg.synchronous_mode !== null && cfg.synchronous_mode !== undefined) {
+        const badge = cfg.synchronous_mode ? '<span class="badge bg-green text-green-fg">Enabled</span>' : '<span class="badge bg-secondary">Disabled</span>';
+        configRows.push(`<tr><td><strong>Synchronous Mode</strong></td><td>${badge}</td><td class="text-muted">Synchronous replication mode</td></tr>`);
+      }
+      if (cfg.synchronous_mode_strict !== null && cfg.synchronous_mode_strict !== undefined) {
+        const badge = cfg.synchronous_mode_strict ? '<span class="badge bg-orange text-orange-fg">Strict</span>' : '<span class="badge bg-secondary">Normal</span>';
+        configRows.push(`<tr><td><strong>Sync Mode Strict</strong></td><td>${badge}</td><td class="text-muted">Prevent leader demotion on sync standby loss</td></tr>`);
+      }
+
+      if (configRows.length > 0) {
+        const configHtml = `
+        <div class="col-12 mt-3" id="patroni-config">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Configuration</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-vcenter card-table table-sm">
+                <thead>
+                  <tr>
+                    <th style="width: 200px;">Parameter</th>
+                    <th style="width: 150px;">Value</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${configRows.join('')}
+                </tbody>
+              </table>
+            </div>
+            <div class="card-footer text-muted small">
+              Patroni cluster configuration from DCS
+            </div>
+          </div>
+        </div>
+        `;
+        document.getElementById('patroni-container').insertAdjacentHTML('beforeend', configHtml);
+      }
+    }
+
   } catch (error) {
     console.error('Failed to fetch Patroni status:', error);
     document.getElementById('patroni-content').innerHTML = `
@@ -198,12 +298,20 @@ function setupRefresh() {
   }
 }
 
-// Initial fetch
+// Initial fetch immediately
 fetchPatroniStatus();
 
-// Setup refresh
-document.getElementById('refresh-interval').addEventListener('change', setupRefresh);
-setupRefresh();
+// Setup refresh listener
+document.getElementById('refresh-interval').addEventListener('change', () => {
+  setupRefresh();
+});
+
+// Start auto-refresh timer (without immediate call since we already called above)
+const select = document.getElementById('refresh-interval');
+const interval = parseInt(select.value);
+if (interval > 0) {
+  refreshInterval = setInterval(fetchPatroniStatus, interval * 1000);
+}
 </script>
 
 {% endblock %}
