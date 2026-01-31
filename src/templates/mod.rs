@@ -8,6 +8,7 @@ pub struct AppContext {
     pub show_databases: bool,
     pub in_memory_active: bool,
     pub show_patroni: bool,
+    pub show_blueprint: bool,
 }
 
 #[derive(Template)]
@@ -419,6 +420,13 @@ pub struct ImportWizardTemplate {
 #[derive(Template)]
 #[template(path = "patroni.html")]
 pub struct PatroniTemplate {
+    pub ctx: AppContext,
+    pub title: String,
+}
+
+#[derive(Template)]
+#[template(path = "blueprint_wizard.html")]
+pub struct BlueprintWizardTemplate {
     pub ctx: AppContext,
     pub title: String,
 }

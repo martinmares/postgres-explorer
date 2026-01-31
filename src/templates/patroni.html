@@ -152,7 +152,7 @@ async function fetchPatroniStatus() {
           <td><code>${member.host}:${member.port}</code></td>
           <td><span class="badge ${roleBadge}">${member.role}</span></td>
           <td><span class="badge ${stateBadge}">${member.state}</span></td>
-          <td class="text-center">${member.timeline}</td>
+          <td class="text-center">${member.timeline !== null && member.timeline !== undefined ? member.timeline : '-'}</td>
           <td class="text-muted">${member.pg_version || '-'}</td>
           <td class="text-muted small">${member.patroni_version || '-'}</td>
           <td class="text-end ${lagClass}"><strong>${formatLag(member.lag)}</strong></td>

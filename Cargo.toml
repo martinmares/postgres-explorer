@@ -1,6 +1,6 @@
 [package]
 name = "postgres-explorer"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 
 [dependencies]
@@ -24,6 +24,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 aes-gcm = "0.10"
 tower-http = { version = "0.6", features = ["fs"] }
 axum-extra = { version = "0.12", features = ["cookie"] }
+url = "2"
 urlencoding = "2"
 chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }

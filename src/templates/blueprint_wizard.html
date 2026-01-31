@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_blueprint %}active{% endblock %}
+{% block page_title %}Blueprint Database Creator{% endblock %}
+{% block content %}
+
+<div class="row row-cards">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+          <li class="nav-item">
+            <a class="nav-link active" id="step-1-tab" href="#" onclick="return false;">
+              <span class="badge bg-primary me-2">1</span> Application
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="step-2-tab" href="#" onclick="return false;">
+              <span class="badge bg-secondary me-2">2</span> Options
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="step-3-tab" href="#" onclick="return false;">
+              <span class="badge bg-secondary me-2">3</span> Preview
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="step-4-tab" href="#" onclick="return false;">
+              <span class="badge bg-secondary me-2">4</span> Execute
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="card-body" id="wizard-root">
+
+        <!-- Step 1: Application Setup -->
+        <div id="step-1" class="wizard-step">
+          <h3 class="mb-3">Application Setup</h3>
+
+          <div class="mb-3">
+            <label class="form-label required">Application Name</label>
+            <input type="text" class="form-control" id="app-name" placeholder="e.g., encjson" maxlength="63">
+            <small class="form-hint">Lowercase letters, numbers, and underscores only. Max 63 characters.</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Schema Name (optional)</label>
+            <input type="text" class="form-control" id="schema-name" placeholder="Defaults to app name">
+            <small class="form-hint">Leave empty to use app name as schema name.</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Database Encoding</label>
+            <select class="form-select" id="encoding">
+              <option value="UTF8" selected>UTF8</option>
+              <option value="SQL_ASCII">SQL_ASCII</option>
+              <option value="LATIN1">LATIN1</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Step 2: Options -->
+        <div id="step-2" class="wizard-step" style="display: none;">
+          <h3 class="mb-3">Security Options</h3>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="lock-public-schema" checked>
+            <label class="form-check-label">
+              Lock public schema
+              <small class="text-muted d-block">Revoke CREATE on public schema to prevent unauthorized object creation</small>
+            </label>
+          </div>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="revoke-db-public" checked>
+            <label class="form-check-label">
+              Revoke DB public access
+              <small class="text-muted d-block">Remove default PUBLIC privileges on database</small>
+            </label>
+          </div>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="set-search-path" checked>
+            <label class="form-check-label">
+              Set search_path
+              <small class="text-muted d-block">Configure roles to use app schema by default</small>
+            </label>
+          </div>
+
+          <div class="alert alert-info">
+            <h4 class="alert-heading">What will be created</h4>
+            <ul class="mb-0">
+              <li>3 roles (nologin): <code>&lt;app&gt;_owner</code>, <code>&lt;app&gt;_rw</code>, <code>&lt;app&gt;_ro</code></li>
+              <li>3 login accounts: <code>&lt;app&gt;_admin</code>, <code>&lt;app&gt;_rw_user</code>, <code>&lt;app&gt;_ro_user</code></li>
+              <li>Database: <code>&lt;app&gt;</code> owned by <code>&lt;app&gt;_owner</code></li>
+              <li>Schema: <code>&lt;app&gt;</code> with proper permissions</li>
+              <li>Default privileges for future objects</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Step 3: Preview SQL -->
+        <div id="step-3" class="wizard-step" style="display: none;">
+          <h3 class="mb-3">SQL Preview</h3>
+
+          <div class="alert alert-warning">
+            <i class="ti ti-info-circle me-2"></i>
+            Passwords will be generated automatically (48 characters, cryptographically secure).
+            They will be shown only once after execution.
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">SQL Commands</label>
+            <textarea class="form-control font-monospace" id="sql-preview" rows="20" readonly style="font-size: 12px;"></textarea>
+          </div>
+        </div>
+
+        <!-- Step 4: Execute & Results -->
+        <div id="step-4" class="wizard-step" style="display: none;">
+          <h3 class="mb-3">Execute Blueprint</h3>
+
+          <div id="execute-section">
+            <div class="alert alert-danger">
+              <h4 class="alert-heading">⚠️ Warning</h4>
+              <p>This will create roles, database, and schema on your PostgreSQL cluster.</p>
+              <p class="mb-0"><strong>Make sure you have reviewed the SQL preview in Step 3.</strong></p>
+            </div>
+
+            <button class="btn btn-success btn-lg" id="btn-execute-blueprint" onclick="executeBlueprint()">
+              <i class="ti ti-play me-2"></i>Create Database
+            </button>
+          </div>
+
+          <div id="result-section" style="display: none;">
+            <div class="alert alert-success">
+              <h4 class="alert-heading">✅ Database Created Successfully!</h4>
+              <p class="mb-0">The database, roles, and schema have been created.</p>
+            </div>
+
+            <div class="card card-body bg-yellow-lt mb-3">
+              <h4 class="text-yellow-fg">⚠️ Save These Passwords Now!</h4>
+              <p class="mb-0">These passwords will <strong>not be shown again</strong>. Copy them to a secure location.</p>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-4">
+                <label class="form-label">Admin Password</label>
+                <div class="input-group">
+                  <input type="text" class="form-control font-monospace" id="admin-password" readonly>
+                  <button class="btn btn-outline-secondary" onclick="copyPassword('admin-password')">
+                    <i class="ti ti-copy"></i>
+                  </button>
+                </div>
+                <small class="text-muted">For migrations and DDL (owns schema)</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">RW Password</label>
+                <div class="input-group">
+                  <input type="text" class="form-control font-monospace" id="rw-password" readonly>
+                  <button class="btn btn-outline-secondary" onclick="copyPassword('rw-password')">
+                    <i class="ti ti-copy"></i>
+                  </button>
+                </div>
+                <small class="text-muted">For application (read-write access)</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">RO Password</label>
+                <div class="input-group">
+                  <input type="text" class="form-control font-monospace" id="ro-password" readonly>
+                  <button class="btn btn-outline-secondary" onclick="copyPassword('ro-password')">
+                    <i class="ti ti-copy"></i>
+                  </button>
+                </div>
+                <small class="text-muted">For read-only queries</small>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="downloadEnvFile()">
+              <i class="ti ti-download me-2"></i>Download .env File
+            </button>
+          </div>
+
+          <div id="error-section" style="display: none;">
+            <div class="alert alert-danger">
+              <h4 class="alert-heading">❌ Error</h4>
+              <p id="error-message" class="mb-0"></p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="card-footer d-flex justify-content-between">
+        <button class="btn btn-secondary" id="btn-prev" disabled onclick="prevStep()">
+          <i class="ti ti-arrow-left me-1"></i>Previous
+        </button>
+        <button class="btn btn-primary" id="btn-next" onclick="nextStep()">
+          Next<i class="ti ti-arrow-right ms-1"></i>
+        </button>
+        <button class="btn btn-success" id="btn-execute" style="display: none;" onclick="showExecuteStep()">
+          Review & Execute<i class="ti ti-arrow-right ms-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+let currentStep = 1;
+let generatedPasswords = null;
+
+function updateStep() {
+  for (let i = 1; i <= 4; i++) {
+    const stepEl = document.getElementById(`step-${i}`);
+    const tabEl = document.getElementById(`step-${i}-tab`);
+    if (stepEl) stepEl.style.display = i === currentStep ? 'block' : 'none';
+    if (tabEl) {
+      if (i === currentStep) {
+        tabEl.classList.add('active');
+        tabEl.querySelector('.badge').classList.remove('bg-secondary');
+        tabEl.querySelector('.badge').classList.add('bg-primary');
+      } else {
+        tabEl.classList.remove('active');
+        tabEl.querySelector('.badge').classList.remove('bg-primary');
+        tabEl.querySelector('.badge').classList.add('bg-secondary');
+      }
+    }
+  }
+
+  document.getElementById('btn-prev').disabled = currentStep === 1;
+  document.getElementById('btn-next').style.display = currentStep === 3 ? 'none' : 'inline-block';
+  document.getElementById('btn-execute').style.display = currentStep === 3 ? 'inline-block' : 'none';
+}
+
+async function nextStep() {
+  if (currentStep === 1) {
+    const appName = document.getElementById('app-name').value.trim();
+    if (!appName) {
+      alert('Please enter an application name');
+      return;
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(appName)) {
+      alert('Invalid app name. Use only lowercase letters, numbers, and underscores. Must start with a letter.');
+      return;
+    }
+  }
+
+  if (currentStep === 2) {
+    // Load preview
+    await loadPreview();
+  }
+
+  if (currentStep < 4) {
+    currentStep++;
+    updateStep();
+  }
+}
+
+function prevStep() {
+  if (currentStep > 1) {
+    currentStep--;
+    updateStep();
+  }
+}
+
+function showExecuteStep() {
+  currentStep = 4;
+  updateStep();
+}
+
+async function loadPreview() {
+  const data = {
+    app_name: document.getElementById('app-name').value.trim(),
+    schema_name: document.getElementById('schema-name').value.trim() || null,
+    encoding: document.getElementById('encoding').value,
+    lock_public_schema: document.getElementById('lock-public-schema').checked,
+    revoke_db_public: document.getElementById('revoke-db-public').checked,
+    set_search_path: document.getElementById('set-search-path').checked,
+  };
+
+  try {
+    const response = await fetch(`${basePath}/blueprint/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+    if (result.success && result.sql_preview) {
+      document.getElementById('sql-preview').value = result.sql_preview;
+    } else {
+      alert('Preview error: ' + (result.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Failed to load preview: ' + e.message);
+  }
+}
+
+async function executeBlueprint() {
+  document.getElementById('btn-execute-blueprint').disabled = true;
+  document.getElementById('btn-execute-blueprint').innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+
+  const data = {
+    app_name: document.getElementById('app-name').value.trim(),
+    schema_name: document.getElementById('schema-name').value.trim() || null,
+    encoding: document.getElementById('encoding').value,
+    lock_public_schema: document.getElementById('lock-public-schema').checked,
+    revoke_db_public: document.getElementById('revoke-db-public').checked,
+    set_search_path: document.getElementById('set-search-path').checked,
+  };
+
+  try {
+    const response = await fetch(`${basePath}/blueprint/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (result.success && result.passwords) {
+      generatedPasswords = result.passwords;
+      document.getElementById('admin-password').value = result.passwords.admin_password;
+      document.getElementById('rw-password').value = result.passwords.rw_password;
+      document.getElementById('ro-password').value = result.passwords.ro_password;
+
+      document.getElementById('execute-section').style.display = 'none';
+      document.getElementById('result-section').style.display = 'block';
+      document.getElementById('error-section').style.display = 'none';
+    } else {
+      document.getElementById('error-message').textContent = result.error || 'Unknown error';
+      document.getElementById('execute-section').style.display = 'none';
+      document.getElementById('error-section').style.display = 'block';
+      document.getElementById('btn-execute-blueprint').disabled = false;
+      document.getElementById('btn-execute-blueprint').innerHTML = '<i class="ti ti-play me-2"></i>Create Database';
+    }
+  } catch (e) {
+    document.getElementById('error-message').textContent = 'Request failed: ' + e.message;
+    document.getElementById('execute-section').style.display = 'none';
+    document.getElementById('error-section').style.display = 'block';
+    document.getElementById('btn-execute-blueprint').disabled = false;
+    document.getElementById('btn-execute-blueprint').innerHTML = '<i class="ti ti-play me-2"></i>Create Database';
+  }
+}
+
+function copyPassword(fieldId) {
+  const input = document.getElementById(fieldId);
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    const btn = input.nextElementSibling;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="ti ti-check"></i>';
+    setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
+  });
+}
+
+function downloadEnvFile() {
+  if (!generatedPasswords) return;
+
+  const appName = document.getElementById('app-name').value.trim();
+  const content = `# Generated by Postgres Explorer Blueprint Wizard
+# Application: ${appName}
+
+${appName.toUpperCase()}_ADMIN_PASSWORD=${generatedPasswords.admin_password}
+${appName.toUpperCase()}_RW_PASSWORD=${generatedPasswords.rw_password}
+${appName.toUpperCase()}_RO_PASSWORD=${generatedPasswords.ro_password}
+
+# Connection strings
+${appName.toUpperCase()}_ADMIN_URL=postgresql://${appName}_admin:\${${appName.toUpperCase()}_ADMIN_PASSWORD}@localhost:5432/${appName}
+${appName.toUpperCase()}_RW_URL=postgresql://${appName}_rw_user:\${${appName.toUpperCase()}_RW_PASSWORD}@localhost:5432/${appName}
+${appName.toUpperCase()}_RO_URL=postgresql://${appName}_ro_user:\${${appName.toUpperCase()}_RO_PASSWORD}@localhost:5432/${appName}
+`;
+
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${appName}.env`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Initialize
+updateStep();
+</script>
+
+{% endblock %}

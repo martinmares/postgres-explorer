@@ -75,6 +75,10 @@ struct Args {
     /// Patroni REST API URLs (comma-separated, e.g. http://node1:8008,http://node2:8008)
     #[arg(long, env = "PATRONI_URLS")]
     patroni_urls: Option<String>,
+
+    /// Enable Blueprint database creator wizard
+    #[arg(long, env = "ENABLE_BLUEPRINT", default_value_t = false)]
+    enable_blueprint: bool,
 }
 
 #[tokio::main]
@@ -136,6 +140,7 @@ async fn main() -> Result<()> {
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
         export_jobs: Arc::new(RwLock::new(HashMap::new())),
         patroni_urls,
+        blueprint_enabled: args.enable_blueprint,
     });
 
     let router = Router::new()
@@ -213,6 +218,9 @@ async fn main() -> Result<()> {
         .route("/dev", get(handlers::console::console))
         .route("/patroni", get(handlers::patroni::patroni_view))
         .route("/patroni/status", get(handlers::patroni::patroni_status))
+        .route("/blueprint", get(handlers::blueprint::blueprint_wizard))
+        .route("/blueprint/preview", axum::routing::post(handlers::blueprint::preview_blueprint))
+        .route("/blueprint/execute", axum::routing::post(handlers::blueprint::execute_blueprint))
         .nest_service("/static", axum::routing::get_service(ServeDir::new("static")))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit
         .with_state(state.clone());

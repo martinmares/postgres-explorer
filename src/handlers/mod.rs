@@ -1,3 +1,4 @@
+pub mod blueprint;
 pub mod console;
 pub mod dashboard;
 pub mod databases;
@@ -35,6 +36,7 @@ pub struct AppState {
     pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
     pub export_jobs: Arc<RwLock<HashMap<String, ExportJob>>>,
     pub patroni_urls: Option<Vec<String>>,
+    pub blueprint_enabled: bool,
 }
 
 pub const CACHE_TTL: Duration = Duration::from_secs(15 * 60);
@@ -78,6 +80,7 @@ pub fn build_ctx(state: &Arc<AppState>) -> AppContext {
         show_databases: false,
         in_memory_active,
         show_patroni: state.patroni_urls.is_some(),
+        show_blueprint: state.blueprint_enabled,
     }
 }
 
@@ -104,6 +107,7 @@ pub fn build_ctx_with_endpoint(state: &Arc<AppState>, endpoint: Option<&crate::d
         show_databases,
         in_memory_active,
         show_patroni: state.patroni_urls.is_some(),
+        show_blueprint: state.blueprint_enabled,
     }
 }
 

@@ -147,6 +147,16 @@
                                 </a>
                             </li>
                             {% endif %}
+                            {% if ctx.show_blueprint %}
+                            <li class="nav-item {% block nav_blueprint %}{% endblock %}">
+                                <a class="nav-link" href="{% if ctx.base_path == "/" %}/blueprint{% else %}{{ ctx.base_path }}/blueprint{% endif %}">
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                        <i class="ti ti-database-plus"></i>
+                                    </span>
+                                    <span class="nav-link-title">Blueprint</span>
+                                </a>
+                            </li>
+                            {% endif %}
                             <li class="nav-item {% block nav_console %}{% endblock %}">
                                 <a class="nav-link" href="/dev">
                                     <span class="nav-link-icon d-md-none d-lg-inline-block">

@@ -13,6 +13,8 @@ use crate::templates::PatroniTemplate;
 pub struct PatroniClusterResponse {
     pub scope: String,
     pub members: Vec<PatroniMember>,
+    #[serde(flatten)]
+    pub extra: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -22,11 +24,32 @@ pub struct PatroniMember {
     pub port: u16,
     pub role: String,
     pub state: String,
-    pub timeline: u64,
     #[serde(default)]
+    pub timeline: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_lag")]
     pub lag: Option<i64>,
     #[serde(default)]
     pub tags: Option<PatroniTags>,
+}
+
+fn deserialize_lag<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum LagValue {
+        Number(i64),
+        String(String),
+    }
+
+    match Option::<LagValue>::deserialize(deserializer)? {
+        Some(LagValue::Number(n)) => Ok(Some(n)),
+        Some(LagValue::String(_)) => Ok(None), // "unknown" -> None
+        None => Ok(None),
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -106,7 +129,7 @@ pub struct PatroniMemberExtended {
     pub port: u16,
     pub role: String,
     pub state: String,
-    pub timeline: u64,
+    pub timeline: Option<u64>,
     pub lag: Option<i64>,
     pub pg_version: Option<String>,
     pub patroni_version: Option<String>,
@@ -174,7 +197,23 @@ pub async fn patroni_status(
         match client.get(&cluster_url).send().await {
             Ok(response) => {
                 if response.status().is_success() {
-                    match response.json::<PatroniClusterResponse>().await {
+                    let body_text = match response.text().await {
+                        Ok(text) => text,
+                        Err(e) => {
+                            statuses.push(PatroniNodeStatus {
+                                url: url.clone(),
+                                online: false,
+                                error: Some(format!("Failed to read response body: {}", e)),
+                                cluster: None,
+                                members_extended: Vec::new(),
+                                history: Vec::new(),
+                                config: None,
+                            });
+                            continue;
+                        }
+                    };
+
+                    match serde_json::from_str::<PatroniClusterResponse>(&body_text) {
                         Ok(cluster) => {
                             // Fetch details from each member
                             let mut members_extended = Vec::new();
@@ -285,10 +324,17 @@ pub async fn patroni_status(
                             });
                         }
                         Err(e) => {
+                            tracing::warn!("Failed to parse /cluster response from {}: {}", url, e);
+                            tracing::debug!("Response body: {}", body_text);
                             statuses.push(PatroniNodeStatus {
                                 url: url.clone(),
                                 online: false,
-                                error: Some(format!("JSON parse error: {}", e)),
+                                error: Some(format!("JSON parse error: {} (body: {})", e,
+                                    if body_text.len() > 200 {
+                                        format!("{}...", &body_text[..200])
+                                    } else {
+                                        body_text
+                                    })),
                                 cluster: None,
                                 members_extended: Vec::new(),
                                 history: Vec::new(),
