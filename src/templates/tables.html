@@ -182,6 +182,11 @@ function loadTables(url) {
                             if (selected) {
                                 schemaSelect.value = selected;
                             }
+                            if (selected && selected !== '*' && !window.__tablesSchemaApplied) {
+                                window.__tablesSchemaApplied = true;
+                                const nextUrl = buildTablesUrl(1);
+                                loadTables(nextUrl);
+                            }
                         }
                     }
                 } catch (e) {
