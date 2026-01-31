@@ -200,7 +200,7 @@ impl Database {
 
         sqlx::query(
             "UPDATE endpoints
-             SET name = ?, url = ?, insecure = ?, username = ?, ssl_mode = ?, search_path = ?, enable_blueprint = COALESCE(?, enable_blueprint), updated_at = CURRENT_TIMESTAMP
+             SET name = ?, url = ?, insecure = ?, username = ?, ssl_mode = ?, search_path = ?, enable_blueprint = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?"
         )
         .bind(name)
@@ -209,7 +209,7 @@ impl Database {
         .bind(endpoint.username)
         .bind(endpoint.ssl_mode)
         .bind(endpoint.search_path)
-        .bind(endpoint.enable_blueprint)
+        .bind(endpoint.enable_blueprint.unwrap_or(false))
         .bind(id)
         .execute(&mut *tx)
         .await
