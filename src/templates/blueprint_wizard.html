@@ -9,6 +9,11 @@
     <div class="card">
       <div class="card-header">
         <h3 class="card-title"><i class="ti ti-database-plus me-2"></i>Blueprint Wizard</h3>
+        <div class="card-actions">
+          <button class="btn btn-ghost-danger" data-bs-toggle="modal" data-bs-target="#cleanup-modal">
+            <i class="ti ti-trash me-1"></i>Cleanup Script
+          </button>
+        </div>
       </div>
       <div class="card-body">
 
@@ -62,7 +67,8 @@
             <input class="form-check-input" type="checkbox" id="lock-public-schema" checked>
             <label class="form-check-label">
               Lock public schema
-              <small class="text-muted d-block">Revoke CREATE on public schema to prevent unauthorized object creation</small>
+              <small class="text-muted d-block">Revoke CREATE on public schema to prevent unauthorized object
+                creation</small>
             </label>
           </div>
 
@@ -85,8 +91,12 @@
           <div class="alert alert-info">
             <h4 class="alert-heading">What will be created</h4>
             <ul class="mb-0">
-              <li>3 roles (nologin): <code>&lt;app&gt;_owner</code>, <code>&lt;app&gt;_rw</code>, <code>&lt;app&gt;_ro</code></li>
-              <li>3 login accounts: <code>&lt;app&gt;_admin</code>, <code>&lt;app&gt;_rw_user</code>, <code>&lt;app&gt;_ro_user</code></li>
+              <li>3 roles (nologin): <code>&lt;app&gt;_owner</code>, <code>&lt;app&gt;_rw</code>,
+                <code>&lt;app&gt;_ro</code>
+              </li>
+              <li>3 login accounts: <code>&lt;app&gt;_admin</code>, <code>&lt;app&gt;_rw_user</code>,
+                <code>&lt;app&gt;_ro_user</code>
+              </li>
               <li>Database: <code>&lt;app&gt;</code> owned by <code>&lt;app&gt;_owner</code></li>
               <li>Schema: <code>&lt;app&gt;</code> with proper permissions</li>
               <li>Default privileges for future objects</li>
@@ -106,7 +116,8 @@
 
           <div class="mb-3">
             <label class="form-label">SQL Commands</label>
-            <textarea class="form-control font-monospace" id="sql-preview" rows="20" readonly style="font-size: 12px;"></textarea>
+            <textarea class="form-control font-monospace" id="sql-preview" rows="20" readonly
+              style="font-size: 12px;"></textarea>
           </div>
         </div>
 
@@ -134,7 +145,8 @@
 
             <div class="card card-body bg-yellow-lt mb-3">
               <h4 class="text-yellow-fg">⚠️ Save These Passwords Now!</h4>
-              <p class="mb-0">These passwords will <strong>not be shown again</strong>. Copy them to a secure location.</p>
+              <p class="mb-0">These passwords will <strong>not be shown again</strong>. Copy them to a secure location.
+              </p>
             </div>
 
             <div class="row mb-3">
@@ -183,7 +195,6 @@
           </div>
         </div>
 
-        </div>
 
       </div>
       <div class="card-footer d-flex justify-content-between">
@@ -197,21 +208,58 @@
           Review & Execute<i class="ti ti-arrow-right ms-1"></i>
         </button>
       </div>
+
     </div>
   </div>
-</div>
 
-<script>
-(() => {
-const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
-if (typeof window.blueprintCurrentStep === 'undefined') {
-  window.blueprintCurrentStep = 1;
-}
-let generatedPasswords = null;
 
-function showBlueprintToast(message) {
-  const toast = document.createElement('div');
-  toast.style = `
+  <!-- Cleanup Script Modal -->
+  <div class="modal modal-blur fade" id="cleanup-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="ti ti-trash me-2"></i>Cleanup Script Generator</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label required">Application Name</label>
+            <input type="text" class="form-control" id="cleanup-app-name" placeholder="e.g., test_app1" maxlength="63"
+              oninput="generateCleanupScript()">
+            <small class="form-hint">Enter the application name to generate cleanup SQL</small>
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label mb-0">Cleanup SQL Script</label>
+              <button class="btn btn-sm btn-primary" onclick="copyCleanupScript()" id="copy-cleanup-btn">
+                <i class="ti ti-copy me-1"></i>Copy to Clipboard
+              </button>
+            </div>
+            <textarea class="form-control font-monospace" id="cleanup-script" rows="12" readonly
+              style="background-color: #1e1e1e; color: #d4d4d4; font-size: 13px;"></textarea>
+            <small class="text-muted">⚠️ This script will permanently delete the database and all associated roles. Run
+              with caution!</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+      if (typeof window.blueprintCurrentStep === 'undefined') {
+        window.blueprintCurrentStep = 1;
+      }
+      let generatedPasswords = null;
+
+      function showBlueprintToast(message) {
+        const toast = document.createElement('div');
+        toast.style = `
     position: fixed;
     top: 100px;
     left: 50%;
@@ -226,7 +274,7 @@ function showBlueprintToast(message) {
     box-shadow: 0 12px 32px rgba(15,23,42,0.4);
     opacity: 0;
   `;
-  toast.innerHTML = `
+        toast.innerHTML = `
     <div style="display:flex; align-items:center; gap:0.75rem;">
       <span style="font-size:1.25rem;">⚠️</span>
       <div style="flex:1;">
@@ -234,169 +282,169 @@ function showBlueprintToast(message) {
       </div>
     </div>
   `;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '1';
-    toast.style.transition = 'opacity 0.2s ease-in';
-  }, 10);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.2s ease-out';
-    setTimeout(() => toast.remove(), 200);
-  }, 3000);
-}
-
-function updateStep() {
-  for (let i = 1; i <= 4; i++) {
-    const stepEl = document.getElementById(`step-${i}`);
-    const tabEl = document.getElementById(`step-${i}-tab`);
-    if (stepEl) stepEl.style.display = i === window.blueprintCurrentStep ? 'block' : 'none';
-    if (tabEl) {
-      if (i === window.blueprintCurrentStep) {
-        tabEl.classList.add('active');
-      } else {
-        tabEl.classList.remove('active');
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '1';
+          toast.style.transition = 'opacity 0.2s ease-in';
+        }, 10);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.2s ease-out';
+          setTimeout(() => toast.remove(), 200);
+        }, 3000);
       }
-    }
-  }
 
-  document.getElementById('btn-prev').disabled = window.blueprintCurrentStep === 1;
-  document.getElementById('btn-next').style.display = window.blueprintCurrentStep === 3 ? 'none' : 'inline-block';
-  document.getElementById('btn-execute').style.display = window.blueprintCurrentStep === 3 ? 'inline-block' : 'none';
-}
+      function updateStep() {
+        for (let i = 1; i <= 4; i++) {
+          const stepEl = document.getElementById(`step-${i}`);
+          const tabEl = document.getElementById(`step-${i}-tab`);
+          if (stepEl) stepEl.style.display = i === window.blueprintCurrentStep ? 'block' : 'none';
+          if (tabEl) {
+            if (i === window.blueprintCurrentStep) {
+              tabEl.classList.add('active');
+            } else {
+              tabEl.classList.remove('active');
+            }
+          }
+        }
 
-window.nextStep = async function nextStep() {
-  if (window.blueprintCurrentStep === 1) {
-    const appName = document.getElementById('app-name').value.trim();
-    if (!appName) {
-      showBlueprintToast('Please enter an application name');
-      return;
-    }
-    if (!/^[a-z][a-z0-9_]*$/.test(appName)) {
-      alert('Invalid app name. Use only lowercase letters, numbers, and underscores. Must start with a letter.');
-      return;
-    }
-  }
+        document.getElementById('btn-prev').disabled = window.blueprintCurrentStep === 1;
+        document.getElementById('btn-next').style.display = window.blueprintCurrentStep === 3 ? 'none' : 'inline-block';
+        document.getElementById('btn-execute').style.display = window.blueprintCurrentStep === 3 ? 'inline-block' : 'none';
+      }
 
-  if (window.blueprintCurrentStep === 2) {
-    // Load preview
-    await loadPreview();
-  }
+      window.nextStep = async function nextStep() {
+        if (window.blueprintCurrentStep === 1) {
+          const appName = document.getElementById('app-name').value.trim();
+          if (!appName) {
+            showBlueprintToast('Please enter an application name');
+            return;
+          }
+          if (!/^[a-z][a-z0-9_]*$/.test(appName)) {
+            alert('Invalid app name. Use only lowercase letters, numbers, and underscores. Must start with a letter.');
+            return;
+          }
+        }
 
-  if (window.blueprintCurrentStep < 4) {
-    window.blueprintCurrentStep++;
-    updateStep();
-  }
-}
+        if (window.blueprintCurrentStep === 2) {
+          // Load preview
+          await loadPreview();
+        }
 
-window.prevStep = function prevStep() {
-  if (window.blueprintCurrentStep > 1) {
-    window.blueprintCurrentStep--;
-    updateStep();
-  }
-}
+        if (window.blueprintCurrentStep < 4) {
+          window.blueprintCurrentStep++;
+          updateStep();
+        }
+      }
 
-window.showExecuteStep = function showExecuteStep() {
-  window.blueprintCurrentStep = 4;
-  updateStep();
-}
+      window.prevStep = function prevStep() {
+        if (window.blueprintCurrentStep > 1) {
+          window.blueprintCurrentStep--;
+          updateStep();
+        }
+      }
 
-async function loadPreview() {
-  const data = {
-    app_name: document.getElementById('app-name').value.trim(),
-    schema_name: document.getElementById('schema-name').value.trim() || null,
-    encoding: document.getElementById('encoding').value,
-    lock_public_schema: document.getElementById('lock-public-schema').checked,
-    revoke_db_public: document.getElementById('revoke-db-public').checked,
-    set_search_path: document.getElementById('set-search-path').checked,
-  };
+      window.showExecuteStep = function showExecuteStep() {
+        window.blueprintCurrentStep = 4;
+        updateStep();
+      }
 
-  try {
-    const response = await fetch(`${basePath}/blueprint/preview`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+      async function loadPreview() {
+        const data = {
+          app_name: document.getElementById('app-name').value.trim(),
+          schema_name: document.getElementById('schema-name').value.trim() || null,
+          encoding: document.getElementById('encoding').value,
+          lock_public_schema: document.getElementById('lock-public-schema').checked,
+          revoke_db_public: document.getElementById('revoke-db-public').checked,
+          set_search_path: document.getElementById('set-search-path').checked,
+        };
 
-    const result = await response.json();
-    if (result.success && result.sql_preview) {
-      document.getElementById('sql-preview').value = result.sql_preview;
-    } else {
-      alert('Preview error: ' + (result.error || 'Unknown error'));
-    }
-  } catch (e) {
-    alert('Failed to load preview: ' + e.message);
-  }
-}
+        try {
+          const response = await fetch(`${basePath}/blueprint/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
 
-window.executeBlueprint = async function executeBlueprint() {
-  document.getElementById('btn-execute-blueprint').disabled = true;
-  document.getElementById('btn-execute-blueprint').innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+          const result = await response.json();
+          if (result.success && result.sql_preview) {
+            document.getElementById('sql-preview').value = result.sql_preview;
+          } else {
+            alert('Preview error: ' + (result.error || 'Unknown error'));
+          }
+        } catch (e) {
+          alert('Failed to load preview: ' + e.message);
+        }
+      }
 
-  const data = {
-    app_name: document.getElementById('app-name').value.trim(),
-    schema_name: document.getElementById('schema-name').value.trim() || null,
-    encoding: document.getElementById('encoding').value,
-    lock_public_schema: document.getElementById('lock-public-schema').checked,
-    revoke_db_public: document.getElementById('revoke-db-public').checked,
-    set_search_path: document.getElementById('set-search-path').checked,
-  };
+      window.executeBlueprint = async function executeBlueprint() {
+        document.getElementById('btn-execute-blueprint').disabled = true;
+        document.getElementById('btn-execute-blueprint').innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
 
-  try {
-    const response = await fetch(`${basePath}/blueprint/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+        const data = {
+          app_name: document.getElementById('app-name').value.trim(),
+          schema_name: document.getElementById('schema-name').value.trim() || null,
+          encoding: document.getElementById('encoding').value,
+          lock_public_schema: document.getElementById('lock-public-schema').checked,
+          revoke_db_public: document.getElementById('revoke-db-public').checked,
+          set_search_path: document.getElementById('set-search-path').checked,
+        };
 
-    const result = await response.json();
+        try {
+          const response = await fetch(`${basePath}/blueprint/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
 
-    if (result.success && result.passwords) {
-      generatedPasswords = result.passwords;
-      document.getElementById('admin-password').value = result.passwords.admin_password;
-      document.getElementById('rw-password').value = result.passwords.rw_password;
-      document.getElementById('ro-password').value = result.passwords.ro_password;
+          const result = await response.json();
 
-      document.getElementById('execute-section').style.display = 'none';
-      document.getElementById('result-section').style.display = 'block';
-      document.getElementById('error-section').style.display = 'none';
+          if (result.success && result.passwords) {
+            generatedPasswords = result.passwords;
+            document.getElementById('admin-password').value = result.passwords.admin_password;
+            document.getElementById('rw-password').value = result.passwords.rw_password;
+            document.getElementById('ro-password').value = result.passwords.ro_password;
 
-      // Hide navigation buttons - wizard is complete
-      document.getElementById('btn-prev').style.display = 'none';
-      document.getElementById('btn-next').style.display = 'none';
-      document.getElementById('btn-execute').style.display = 'none';
-    } else {
-      document.getElementById('error-message').textContent = result.error || 'Unknown error';
-      document.getElementById('execute-section').style.display = 'none';
-      document.getElementById('error-section').style.display = 'block';
-      document.getElementById('btn-execute-blueprint').disabled = false;
-      document.getElementById('btn-execute-blueprint').innerHTML = '<i class="ti ti-play me-2"></i>Create Database';
-    }
-  } catch (e) {
-    document.getElementById('error-message').textContent = 'Request failed: ' + e.message;
-    document.getElementById('execute-section').style.display = 'none';
-    document.getElementById('error-section').style.display = 'block';
-    document.getElementById('btn-execute-blueprint').disabled = false;
-    document.getElementById('btn-execute-blueprint').innerHTML = '<i class="ti ti-play me-2"></i>Create Database';
-  }
-}
+            document.getElementById('execute-section').style.display = 'none';
+            document.getElementById('result-section').style.display = 'block';
+            document.getElementById('error-section').style.display = 'none';
 
-function copyPassword(fieldId) {
-  const input = document.getElementById(fieldId);
-  input.select();
-  navigator.clipboard.writeText(input.value).then(() => {
-    const btn = input.nextElementSibling;
-    const originalHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="ti ti-check"></i>';
-    setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
-  });
-}
+            // Hide navigation buttons - wizard is complete
+            document.getElementById('btn-prev').style.display = 'none';
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-execute').style.display = 'none';
+          } else {
+            document.getElementById('error-message').textContent = result.error || 'Unknown error';
+            document.getElementById('execute-section').style.display = 'none';
+            document.getElementById('error-section').style.display = 'block';
+            document.getElementById('btn-execute-blueprint').disabled = false;
+            document.getElementById('btn-execute-blueprint').innerHTML = '<i class="ti ti-play me-2"></i>Create Database';
+          }
+        } catch (e) {
+          document.getElementById('error-message').textContent = 'Request failed: ' + e.message;
+          document.getElementById('execute-section').style.display = 'none';
+          document.getElementById('error-section').style.display = 'block';
+          document.getElementById('btn-execute-blueprint').disabled = false;
+          document.getElementById('btn-execute-blueprint').innerHTML = '<i class="ti ti-play me-2"></i>Create Database';
+        }
+      }
 
-window.downloadEnvFile = function() {
-  if (!generatedPasswords) return;
+      function copyPassword(fieldId) {
+        const input = document.getElementById(fieldId);
+        input.select();
+        navigator.clipboard.writeText(input.value).then(() => {
+          const btn = input.nextElementSibling;
+          const originalHtml = btn.innerHTML;
+          btn.innerHTML = '<i class="ti ti-check"></i>';
+          setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
+        });
+      }
 
-  const appName = document.getElementById('app-name').value.trim();
-  const content = `# Generated by Postgres Explorer Blueprint Wizard
+      window.downloadEnvFile = function () {
+        if (!generatedPasswords) return;
+
+        const appName = document.getElementById('app-name').value.trim();
+        const content = `# Generated by Postgres Explorer Blueprint Wizard
 # Application: ${appName}
 
 ${appName.toUpperCase()}_ADMIN_PASSWORD=${generatedPasswords.admin_password}
@@ -409,18 +457,77 @@ ${appName.toUpperCase()}_RW_URL=postgresql://${appName}_rw_user:\${${appName.toU
 ${appName.toUpperCase()}_RO_URL=postgresql://${appName}_ro_user:\${${appName.toUpperCase()}_RO_PASSWORD}@localhost:5432/${appName}
 `;
 
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${appName}.env`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${appName}.env`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
 
-// Initialize
-updateStep();
-})();
-</script>
+      // Cleanup Script Functions
+      window.generateCleanupScript = function () {
+        const appName = document.getElementById('cleanup-app-name').value.trim();
+        const textarea = document.getElementById('cleanup-script');
 
-{% endblock %}
+        if (!appName) {
+          textarea.value = '-- Enter an application name to generate cleanup script';
+          return;
+        }
+
+        // Validate app name format
+        if (!/^[a-z][a-z0-9_]*$/.test(appName)) {
+          textarea.value = '-- Invalid application name. Use lowercase letters, numbers, and underscores only.';
+          return;
+        }
+
+        const script = `-- Cleanup script for application: ${appName}
+-- WARNING: This will permanently delete the database and all associated roles!
+-- Generated by Postgres Explorer Blueprint Wizard
+
+-- Step 1: Terminate active connections to the database
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = '${appName}' AND pid <> pg_backend_pid();
+
+-- Step 2: Drop the database
+DROP DATABASE IF EXISTS ${appName};
+
+-- Step 3: Drop login roles (must be done before group roles due to membership)
+DROP ROLE IF EXISTS ${appName}_admin;
+DROP ROLE IF EXISTS ${appName}_rw_user;
+DROP ROLE IF EXISTS ${appName}_ro_user;
+
+-- Step 4: Drop group roles
+DROP ROLE IF EXISTS ${appName}_owner;
+DROP ROLE IF EXISTS ${appName}_rw;
+DROP ROLE IF EXISTS ${appName}_ro;
+
+-- Cleanup complete for ${appName}
+`;
+
+        textarea.value = script;
+      }
+
+      window.copyCleanupScript = function () {
+        const textarea = document.getElementById('cleanup-script');
+        const btn = document.getElementById('copy-cleanup-btn');
+
+        if (!textarea.value || textarea.value.startsWith('--')) {
+          return;
+        }
+
+        navigator.clipboard.writeText(textarea.value).then(() => {
+          const originalHtml = btn.innerHTML;
+          btn.innerHTML = '<i class="ti ti-check me-1"></i>Copied!';
+          setTimeout(() => { btn.innerHTML = originalHtml; }, 2000);
+        });
+      }
+
+      // Initialize
+      updateStep();
+    })();
+  </script>
+
+  {% endblock %}

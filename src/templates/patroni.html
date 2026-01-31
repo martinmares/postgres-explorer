@@ -83,6 +83,10 @@ function getWalLagClass(bytes) {
 }
 
 async function fetchPatroniStatus() {
+  // Guard: only run if we're on the Patroni page
+  const contentEl = document.getElementById('patroni-content');
+  if (!contentEl) return;
+
   try {
     const response = await fetch(`${basePath}/patroni/status`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -280,12 +284,15 @@ async function fetchPatroniStatus() {
 
   } catch (error) {
     console.error('Failed to fetch Patroni status:', error);
-    document.getElementById('patroni-content').innerHTML = `
-      <div class="alert alert-danger m-3">
-        <h4 class="alert-heading">Failed to fetch cluster status</h4>
-        <p class="mb-0">Error: ${error.message}</p>
-      </div>
-    `;
+    const contentEl = document.getElementById('patroni-content');
+    if (contentEl) {
+      contentEl.innerHTML = `
+        <div class="alert alert-danger m-3">
+          <h4 class="alert-heading">Failed to fetch cluster status</h4>
+          <p class="mb-0">Error: ${error.message}</p>
+        </div>
+      `;
+    }
   }
 }
 
@@ -316,9 +323,11 @@ if (select) {
   select.addEventListener('change', setupRefresh);
 }
 
-// Initial fetch immediately + schedule interval
-fetchPatroniStatus();
-setupRefresh();
+// Initial fetch immediately + schedule interval (only if on Patroni page)
+if (document.getElementById('patroni-content')) {
+  fetchPatroniStatus();
+  setupRefresh();
+}
 })();
 </script>
 
