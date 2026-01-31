@@ -229,19 +229,19 @@
 </div>
 
 <script>
-let currentAnalyzeSchema = '';
-let currentAnalyzeTable = '';
+window.currentAnalyzeSchema = window.currentAnalyzeSchema || '';
+window.currentAnalyzeTable = window.currentAnalyzeTable || '';
 
-function showAnalyzeModal(schema, table) {
-  currentAnalyzeSchema = schema;
-  currentAnalyzeTable = table;
+window.showAnalyzeModal = function(schema, table) {
+  window.currentAnalyzeSchema = schema;
+  window.currentAnalyzeTable = table;
   document.getElementById('analyze-table-name').textContent = schema + '.' + table;
   document.getElementById('analyze-result').style.display = 'none';
   document.getElementById('run-analyze-btn').disabled = false;
   new bootstrap.Modal(document.getElementById('analyze-modal')).show();
-}
+};
 
-function runAnalyze() {
+window.runAnalyze = function() {
   const btn = document.getElementById('run-analyze-btn');
   const resultDiv = document.getElementById('analyze-result');
 
@@ -249,7 +249,7 @@ function runAnalyze() {
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
 
   const basePath = '{{ ctx.base_path }}' === '/' ? '' : '{{ ctx.base_path }}';
-  fetch(basePath + '/analyze/' + encodeURIComponent(currentAnalyzeSchema) + '/' + encodeURIComponent(currentAnalyzeTable), {
+  fetch(basePath + '/analyze/' + encodeURIComponent(window.currentAnalyzeSchema) + '/' + encodeURIComponent(window.currentAnalyzeTable), {
     method: 'POST'
   })
   .then(r => r.json())
@@ -275,7 +275,7 @@ function runAnalyze() {
     btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-refresh me-1"></i>Run ANALYZE';
   });
-}
+};
 </script>
 
 {% endblock %}

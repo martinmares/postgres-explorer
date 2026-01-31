@@ -109,7 +109,7 @@
                                 </a>
                             </li>
                             <li class="nav-item {% block nav_export %}{% endblock %}">
-                                <a class="nav-link" href="{% if ctx.base_path == "/" %}/export{% else %}{{ ctx.base_path }}/export{% endif %}">
+                                <a class="nav-link" hx-boost="false" href="{% if ctx.base_path == "/" %}/export{% else %}{{ ctx.base_path }}/export{% endif %}">
                                     <span class="nav-link-icon d-md-none d-lg-inline-block">
                                         <i class="ti ti-download"></i>
                                     </span>
@@ -117,7 +117,7 @@
                                 </a>
                             </li>
                             <li class="nav-item {% block nav_import %}{% endblock %}">
-                                <a class="nav-link" href="{% if ctx.base_path == "/" %}/import{% else %}{{ ctx.base_path }}/import{% endif %}">
+                                <a class="nav-link" hx-boost="false" href="{% if ctx.base_path == "/" %}/import{% else %}{{ ctx.base_path }}/import{% endif %}">
                                     <span class="nav-link-icon d-md-none d-lg-inline-block">
                                         <i class="ti ti-upload"></i>
                                     </span>
@@ -234,7 +234,11 @@
                 if (evt.detail && evt.detail.target) {
                     rewriteAttrs(evt.detail.target);
                 }
+                if (window.initImportWizard) {
+                    window.initImportWizard();
+                }
             });
+
 
             document.addEventListener("htmx:configRequest", (evt) => {
                 if (evt.detail && evt.detail.path) {
@@ -244,12 +248,19 @@
         })();
     </script>
 
+    <script>
+        window.basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
     <script src="{% if ctx.base_path == "/" %}/static/endpoints.js{% else %}{{ ctx.base_path }}/static/endpoints.js{% endif %}"></script>
+    <script src="{% if ctx.base_path == "/" %}/static/import_wizard.js{% else %}{{ ctx.base_path }}/static/import_wizard.js{% endif %}"></script>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const themeToggle = document.getElementById('theme-toggle');
+            document.addEventListener('DOMContentLoaded', function() {
+                if (window.initImportWizard) {
+                    window.initImportWizard();
+                }
+                const themeToggle = document.getElementById('theme-toggle');
             const themeMenu = document.getElementById('theme-menu');
             const themeButtons = document.querySelectorAll('[data-theme]');
 
