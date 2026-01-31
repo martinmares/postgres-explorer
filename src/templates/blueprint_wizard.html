@@ -329,7 +329,7 @@ async function loadPreview() {
   }
 }
 
-async function executeBlueprint() {
+window.executeBlueprint = async function executeBlueprint() {
   document.getElementById('btn-execute-blueprint').disabled = true;
   document.getElementById('btn-execute-blueprint').innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
 
