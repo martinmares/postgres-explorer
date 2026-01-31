@@ -375,6 +375,14 @@ document.getElementById('btn-prev').addEventListener('click', () => {
 
 document.getElementById('btn-execute').addEventListener('click', startExport);
 
+// Show/hide table selector
+document.querySelectorAll('input[name="scope"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    document.getElementById('table-selector').style.display =
+      e.target.value === 'tables' ? 'block' : 'none';
+  });
+});
+
 function updateStep() {
   // Hide all steps
   for (let i = 1; i <= 4; i++) {
@@ -591,13 +599,30 @@ function downloadLogs() {
   a.click();
 }
 
-// Show/hide table selector
-document.querySelectorAll('input[name="scope"]').forEach(radio => {
-  radio.addEventListener('change', (e) => {
-    document.getElementById('table-selector').style.display =
-      e.target.value === 'tables' ? 'block' : 'none';
-  });
-});
+function resetWizard() {
+  // Close event source if running
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  // Clear timer
+  if (durationInterval) {
+    clearInterval(durationInterval);
+    durationInterval = null;
+  }
+  // Reset state
+  jobId = null;
+  startTime = null;
+
+  // Reset UI
+  document.getElementById('export-status').style.display = 'none';
+  document.getElementById('download-section').style.display = 'none';
+  document.getElementById('terminal-output').innerHTML = '';
+  document.getElementById('job-status').textContent = 'Running...';
+  document.getElementById('job-status').style.color = '';
+  document.getElementById('job-duration').textContent = '00:00';
+  document.getElementById('btn-execute').disabled = false;
+}
 </script>
 
 {% endblock %}
