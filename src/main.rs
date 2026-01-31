@@ -18,6 +18,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(name = "postgres-explorer")]
 #[command(about = "Postgres cluster explorer", long_about = None)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 struct Args {
     /// Host for HTTP server
     #[arg(long, default_value = "127.0.0.1")]
