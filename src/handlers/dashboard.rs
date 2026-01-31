@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum_extra::extract::CookieJar;
 
 use crate::handlers::{base_path_url, build_ctx_with_endpoint, connect_pg, get_active_endpoint, AppState};
-use crate::templates::{DashboardTemplate, TopTable};
+use crate::templates::{ConnectionInfo, ConnectionState, DashboardTemplate, DatabaseInfo, TopTable};
 use crate::utils::format::bytes_to_human;
 
 pub async fn dashboard(
@@ -37,6 +37,22 @@ pub async fn dashboard(
 
     // Top tables
     let mut top_tables: Vec<TopTable> = Vec::new();
+    let mut databases: Vec<DatabaseInfo> = Vec::new();
+    let mut connection_states: Vec<ConnectionState> = Vec::new();
+    let mut databases_menu_enabled = false;
+    let mut conninfo = ConnectionInfo {
+        db_name: "-".to_string(),
+        client_user: "-".to_string(),
+        host: "-".to_string(),
+        server_port: "-".to_string(),
+        client_addr: "-".to_string(),
+        client_port: "-".to_string(),
+        backend_pid: "-".to_string(),
+        ssl: "-".to_string(),
+        is_superuser: "-".to_string(),
+        in_hot_standby: "-".to_string(),
+        options: "-".to_string(),
+    };
 
     if let Ok(pg) = connect_pg(&state, &active).await {
         // Základní info
@@ -61,6 +77,41 @@ pub async fn dashboard(
             schema_count = schemas.to_string();
             table_count = tables.to_string();
             index_count = indexes.to_string();
+        }
+
+        // Connection info
+        if let Ok(row) = sqlx::query(
+            r#"
+            SELECT
+                current_database() as db_name,
+                current_user as client_user,
+                inet_server_addr()::text as host,
+                inet_server_port()::text as server_port,
+                inet_client_addr()::text as client_addr,
+                inet_client_port()::text as client_port,
+                pg_backend_pid()::text as backend_pid,
+                current_setting('ssl', true) as ssl,
+                current_setting('is_superuser', true) as is_superuser,
+                current_setting('in_hot_standby', true) as in_hot_standby,
+                current_setting('options', true) as options
+            "#,
+        )
+        .fetch_one(&pg)
+        .await
+        {
+            conninfo = ConnectionInfo {
+                db_name: row.try_get::<String, _>("db_name").unwrap_or_else(|_| "-".to_string()),
+                client_user: row.try_get::<String, _>("client_user").unwrap_or_else(|_| "-".to_string()),
+                host: row.try_get::<String, _>("host").unwrap_or_else(|_| "-".to_string()),
+                server_port: row.try_get::<String, _>("server_port").unwrap_or_else(|_| "-".to_string()),
+                client_addr: row.try_get::<String, _>("client_addr").unwrap_or_else(|_| "-".to_string()),
+                client_port: row.try_get::<String, _>("client_port").unwrap_or_else(|_| "-".to_string()),
+                backend_pid: row.try_get::<String, _>("backend_pid").unwrap_or_else(|_| "-".to_string()),
+                ssl: row.try_get::<String, _>("ssl").unwrap_or_else(|_| "-".to_string()),
+                is_superuser: row.try_get::<String, _>("is_superuser").unwrap_or_else(|_| "-".to_string()),
+                in_hot_standby: row.try_get::<String, _>("in_hot_standby").unwrap_or_else(|_| "-".to_string()),
+                options: row.try_get::<String, _>("options").unwrap_or_else(|_| "-".to_string()),
+            };
         }
 
         // Cache hit ratio
@@ -96,6 +147,76 @@ pub async fn dashboard(
             max_connections = row.get::<i32, _>("max_connections");
             connections_text = format!("{} / {}", active_connections, max_connections);
             connections_percent = (active_connections as f64 / max_connections as f64) * 100.0;
+        }
+
+        // Connection states
+        if let Ok(rows) = sqlx::query(
+            r#"
+            SELECT COALESCE(state, 'unknown') as state, count(*)::bigint as count
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+            GROUP BY state
+            ORDER BY count DESC
+            "#,
+        )
+        .fetch_all(&pg)
+        .await
+        {
+            for row in rows {
+                let state: String = row.get("state");
+                let count: i64 = row.get("count");
+                let badge_class = match state.as_str() {
+                    "active" => "bg-green-lt",
+                    "idle" => "bg-azure-lt",
+                    "idle in transaction" => "bg-orange-lt",
+                    "idle in transaction (aborted)" => "bg-red-lt",
+                    "fastpath function call" => "bg-purple-lt",
+                    "disabled" => "bg-gray-lt",
+                    _ => "bg-secondary-lt",
+                }
+                .to_string();
+                connection_states.push(ConnectionState {
+                    state,
+                    count,
+                    badge_class,
+                });
+            }
+        }
+
+        // Databases list (if allowed)
+        let db_query = r#"
+            SELECT
+                d.datname as name,
+                pg_get_userbyid(d.datdba) as owner,
+                pg_encoding_to_char(d.encoding) as encoding,
+                d.datcollate as collate,
+                d.datctype as ctype,
+                d.datallowconn as allow_conn,
+                d.datistemplate as is_template,
+                d.datconnlimit as conn_limit,
+                pg_database_size(d.datname) as size_bytes,
+                COALESCE(s.numbackends, 0)::bigint as connections
+            FROM pg_database d
+            LEFT JOIN pg_stat_database s ON s.datname = d.datname
+            ORDER BY d.datname
+        "#;
+        if let Ok(rows) = sqlx::query(db_query).fetch_all(&pg).await {
+            databases_menu_enabled = true;
+            for row in rows {
+                let size_bytes: i64 = row.get("size_bytes");
+                databases.push(DatabaseInfo {
+                    name: row.get("name"),
+                    owner: row.get("owner"),
+                    encoding: row.get("encoding"),
+                    collate: row.get("collate"),
+                    ctype: row.get("ctype"),
+                    allow_conn: row.get("allow_conn"),
+                    is_template: row.get("is_template"),
+                    conn_limit: row.get("conn_limit"),
+                    size: bytes_to_human(size_bytes),
+                    connections: row.get::<i64, _>("connections"),
+                });
+            }
         }
 
         // Top 10 tables by size (grouping partitions with their parent table)
@@ -175,11 +296,17 @@ pub async fn dashboard(
         }
     }
 
+    if let Ok(mut guard) = state.databases_menu.write() {
+        guard.insert(active.id, databases_menu_enabled);
+    }
+
     let tpl = DashboardTemplate {
         ctx: build_ctx_with_endpoint(&state, Some(&active)),
         title: "Dashboard | Postgres Explorer".to_string(),
         server_name: active.name,
         server_version,
+        active_endpoint_id: active.id,
+        in_memory_active: state.active_override.read().ok().and_then(|g| g.clone()).is_some(),
         schema_count,
         table_count,
         index_count,
@@ -191,6 +318,9 @@ pub async fn dashboard(
         connections_text,
         connections_percent,
         top_tables,
+        databases,
+        connection_states,
+        conninfo,
     };
 
     tpl.render()

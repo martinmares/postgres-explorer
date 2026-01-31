@@ -5,6 +5,8 @@ pub struct AppContext {
     pub base_path: String,
     pub version: String,
     pub active_endpoint_name: String,
+    pub show_databases: bool,
+    pub in_memory_active: bool,
 }
 
 #[derive(Template)]
@@ -14,6 +16,8 @@ pub struct DashboardTemplate {
     pub title: String,
     pub server_name: String,
     pub server_version: String,
+    pub active_endpoint_id: i64,
+    pub in_memory_active: bool,
     pub schema_count: String,
     pub table_count: String,
     pub index_count: String,
@@ -25,6 +29,54 @@ pub struct DashboardTemplate {
     pub connections_text: String,
     pub connections_percent: f64,
     pub top_tables: Vec<TopTable>,
+    pub databases: Vec<DatabaseInfo>,
+    pub connection_states: Vec<ConnectionState>,
+    pub conninfo: ConnectionInfo,
+}
+
+#[derive(Clone)]
+pub struct DatabaseInfo {
+    pub name: String,
+    pub owner: String,
+    pub encoding: String,
+    pub collate: String,
+    pub ctype: String,
+    pub allow_conn: bool,
+    pub is_template: bool,
+    pub conn_limit: i32,
+    pub size: String,
+    pub connections: i64,
+}
+
+#[derive(Clone)]
+pub struct ConnectionState {
+    pub state: String,
+    pub count: i64,
+    pub badge_class: String,
+}
+
+#[derive(Clone)]
+pub struct ConnectionInfo {
+    pub db_name: String,
+    pub client_user: String,
+    pub host: String,
+    pub server_port: String,
+    pub client_addr: String,
+    pub client_port: String,
+    pub backend_pid: String,
+    pub ssl: String,
+    pub is_superuser: String,
+    pub in_hot_standby: String,
+    pub options: String,
+}
+
+#[derive(Template)]
+#[template(path = "databases.html")]
+pub struct DatabasesTemplate {
+    pub ctx: AppContext,
+    pub title: String,
+    pub active_endpoint_id: i64,
+    pub databases: Vec<DatabaseInfo>,
 }
 
 #[derive(Template)]

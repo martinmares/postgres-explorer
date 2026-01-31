@@ -139,6 +139,13 @@ pub async fn select_endpoint(
         return Err((StatusCode::NOT_FOUND, "Endpoint not found".to_string()));
     }
 
+    if let Ok(mut guard) = state.active_override.write() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = state.active_override_password.write() {
+        *guard = None;
+    }
+
     let jar = jar.add(set_active_endpoint_cookie(id));
     let target = base_path_url(&state, "/");
     Ok((jar, Redirect::to(&target)).into_response())

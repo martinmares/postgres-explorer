@@ -30,8 +30,11 @@
                         <i class="ti ti-database icon"></i>
                         Postgres Explorer
                     </a>
-                    <div class="small text-muted mt-1">
-                        <i class="ti ti-plug-connected"></i> {{ ctx.active_endpoint_name }}
+                    <div class="small text-muted mt-1 d-flex align-items-center gap-2">
+                        <span><i class="ti ti-plug-connected"></i> {{ ctx.active_endpoint_name }}</span>
+                        {% if ctx.in_memory_active %}
+                        <span class="badge bg-azure-lt">in-memory</span>
+                        {% endif %}
                     </div>
                 </h1>
                 <div class="navbar-nav flex-row order-md-last">
@@ -76,6 +79,16 @@
                                     <span class="nav-link-title">Dashboard</span>
                                 </a>
                             </li>
+                            {% if ctx.show_databases %}
+                            <li class="nav-item {% block nav_databases %}{% endblock %}">
+                                <a class="nav-link" href="{% if ctx.base_path == "/" %}/databases{% else %}{{ ctx.base_path }}/databases{% endif %}">
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                        <i class="ti ti-database"></i>
+                                    </span>
+                                    <span class="nav-link-title">Databases</span>
+                                </a>
+                            </li>
+                            {% endif %}
                             <li class="nav-item {% block nav_schemas %}{% endblock %}">
                                 <a class="nav-link" href="/schemas">
                                     <span class="nav-link-icon d-md-none d-lg-inline-block">

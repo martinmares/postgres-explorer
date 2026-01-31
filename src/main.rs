@@ -108,6 +108,9 @@ async fn main() -> Result<()> {
         base_path: base_path.clone(),
         stateless_endpoint,
         stateless_password: if args.stateless { args.conf_db_password.clone() } else { None },
+        active_override: Arc::new(std::sync::RwLock::new(None)),
+        active_override_password: Arc::new(std::sync::RwLock::new(None)),
+        databases_menu: Arc::new(std::sync::RwLock::new(HashMap::new())),
         schemas_cache: Arc::new(RwLock::new(HashMap::new())),
         tables_cache: Arc::new(RwLock::new(HashMap::new())),
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -117,6 +120,9 @@ async fn main() -> Result<()> {
     let router = Router::new()
         .route("/", get(handlers::dashboard::dashboard))
         .route("/analyze/{schema}/{table}", axum::routing::post(handlers::dashboard::analyze_table))
+        .route("/databases", get(handlers::databases::list_databases))
+        .route("/databases/activate", axum::routing::post(handlers::databases::activate_database))
+        .route("/databases/reset", axum::routing::post(handlers::databases::reset_database_override))
         .route("/endpoints", get(handlers::endpoints::list_endpoints).post(handlers::endpoints::create_endpoint))
         .route("/endpoints/{id}", put(handlers::endpoints::update_endpoint).delete(handlers::endpoints::delete_endpoint))
         .route("/endpoints/{id}/select", axum::routing::post(handlers::endpoints::select_endpoint))

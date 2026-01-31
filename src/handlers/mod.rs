@@ -1,5 +1,6 @@
 pub mod console;
 pub mod dashboard;
+pub mod databases;
 pub mod endpoints;
 pub mod export;
 pub mod indices;
@@ -9,7 +10,7 @@ pub mod table_detail;
 pub mod tables;
 pub mod tuning;
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{Duration, Instant, SystemTime};
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::RwLock;
@@ -25,6 +26,9 @@ pub struct AppState {
     pub base_path: String,
     pub stateless_endpoint: Option<crate::db::models::Endpoint>,
     pub stateless_password: Option<String>,
+    pub active_override: Arc<StdRwLock<Option<crate::db::models::Endpoint>>>,
+    pub active_override_password: Arc<StdRwLock<Option<String>>>,
+    pub databases_menu: Arc<StdRwLock<HashMap<i64, bool>>>,
     pub schemas_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::schemas::SchemaRowDb>>>>,
     pub tables_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::tables::TableRowDb>>>>,
     pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
@@ -59,18 +63,43 @@ pub struct ExportJob {
 }
 
 pub fn build_ctx(state: &Arc<AppState>) -> AppContext {
+    let in_memory_active = state
+        .active_override
+        .read()
+        .ok()
+        .and_then(|g| g.clone())
+        .is_some();
     AppContext {
         base_path: state.base_path.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         active_endpoint_name: "No connection".to_string(),
+        show_databases: false,
+        in_memory_active,
     }
 }
 
 pub fn build_ctx_with_endpoint(state: &Arc<AppState>, endpoint: Option<&crate::db::models::Endpoint>) -> AppContext {
+    let in_memory_active = state
+        .active_override
+        .read()
+        .ok()
+        .and_then(|g| g.clone())
+        .is_some();
+    let show_databases = endpoint
+        .and_then(|e| {
+            state
+                .databases_menu
+                .read()
+                .ok()
+                .and_then(|map| map.get(&e.id).copied())
+        })
+        .unwrap_or(false);
     AppContext {
         base_path: state.base_path.clone(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         active_endpoint_name: endpoint.map(|e| e.name.clone()).unwrap_or_else(|| "No connection".to_string()),
+        show_databases,
+        in_memory_active,
     }
 }
 
@@ -86,6 +115,11 @@ pub async fn get_active_endpoint(
     state: &Arc<AppState>,
     jar: &CookieJar,
 ) -> Option<crate::db::models::Endpoint> {
+    if let Ok(guard) = state.active_override.read() {
+        if let Some(endpoint) = guard.clone() {
+            return Some(endpoint);
+        }
+    }
     if let Some(endpoint) = &state.stateless_endpoint {
         return Some(endpoint.clone());
     }
@@ -112,7 +146,26 @@ pub async fn connect_pg(
     state: &Arc<AppState>,
     endpoint: &crate::db::models::Endpoint,
 ) -> anyhow::Result<PgPool> {
-    let password = if let Some(db) = &state.db {
+    let override_password = state
+        .active_override
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .and_then(|override_ep| {
+            if override_ep.id == endpoint.id && override_ep.url == endpoint.url {
+                state
+                    .active_override_password
+                    .read()
+                    .ok()
+                    .and_then(|p| p.clone())
+            } else {
+                None
+            }
+        });
+
+    let password = if override_password.is_some() {
+        override_password
+    } else if let Some(db) = &state.db {
         db.get_endpoint_password(endpoint).await
     } else {
         state.stateless_password.clone()

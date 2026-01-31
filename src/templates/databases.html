@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_databases %}active{% endblock %}
+{% block page_title %}Databases{% endblock %}
+{% block content %}
+
+{% if ctx.in_memory_active %}
+<div class="row row-cards mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-body d-flex align-items-center justify-content-between">
+        <div>
+          <strong>In-memory connection active.</strong>
+          <div class="text-muted small">Reset to the original connection from startup.</div>
+        </div>
+        <form method="post" hx-boost="false" action="{% if ctx.base_path == "/" %}/databases/reset{% else %}{{ ctx.base_path }}/databases/reset{% endif %}">
+          <button type="submit" class="btn btn-outline-warning">
+            Reset connection to default
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row row-cards">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Databases</h3>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Owner</th>
+              <th>Encoding</th>
+              <th>Collation</th>
+              <th>CTYPE</th>
+              <th>Size</th>
+              <th>Connections</th>
+              <th class="w-1">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if databases.len() == 0 %}
+            <tr>
+              <td colspan="8" class="text-center text-muted py-4">
+                No databases visible or permission denied.
+              </td>
+            </tr>
+            {% else %}
+            {% for db in databases %}
+            <tr>
+              <td><code>{{ db.name }}</code></td>
+              <td class="text-muted">{{ db.owner }}</td>
+              <td class="text-muted">{{ db.encoding }}</td>
+              <td class="text-muted">{{ db.collate }}</td>
+              <td class="text-muted">{{ db.ctype }}</td>
+              <td class="text-end text-nowrap">{{ db.size }}</td>
+              <td class="text-end">{{ db.connections }}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary"
+                        onclick="openDbSwitchModal('{{ db.name }}')">
+                  Activate
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer text-muted small">
+        Switches the active database in this process only (resets on restart).
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal pro přepnutí DB -->
+<div class="modal modal-blur fade" id="db-switch-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <form method="post" id="db-switch-form" hx-boost="false" action="{% if ctx.base_path == "/" %}/databases/activate{% else %}{{ ctx.base_path }}/databases/activate{% endif %}" onsubmit="return submitDbSwitch(event)">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Activate database</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <strong>Database:</strong> <code id="db-switch-name"></code>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Username (optional)</label>
+            <input type="text" class="form-control" name="username" placeholder="Use current if empty">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password (optional)</label>
+            <input type="password" class="form-control" name="password" placeholder="Use current if empty">
+          </div>
+          <div class="text-muted small">
+            If left empty, current credentials are reused.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Activate</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openDbSwitchModal(dbName) {
+  const basePath = '{{ ctx.base_path }}' === '/' ? '' : '{{ ctx.base_path }}';
+  document.getElementById('db-switch-name').textContent = dbName;
+  document.getElementById('db-switch-form').setAttribute('action', `${basePath}/databases/activate`);
+  document.getElementById('db-switch-form').setAttribute('data-db-name', dbName);
+  new bootstrap.Modal(document.getElementById('db-switch-modal')).show();
+}
+
+async function submitDbSwitch(event) {
+  event.preventDefault();
+  const form = document.getElementById('db-switch-form');
+  const action = form.getAttribute('action');
+  const payload = {
+    db_name: form.getAttribute('data-db-name'),
+    active_id: {{ active_endpoint_id }},
+    username: form.querySelector('input[name="username"]').value,
+    password: form.querySelector('input[name="password"]').value
+  };
+  const response = await fetch(action, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (response.redirected) {
+    window.location.href = response.url;
+    return false;
+  }
+  if (response.ok) {
+    window.location.href = '{{ ctx.base_path }}' === '/' ? '/' : '{{ ctx.base_path }}/';
+    return false;
+  }
+  alert('Failed to switch database');
+  return false;
+}
+</script>
+
+{% endblock %}

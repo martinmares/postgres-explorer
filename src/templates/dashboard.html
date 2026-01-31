@@ -6,18 +6,43 @@
 
 <!-- První řada - základní info -->
 <div class="row row-deck row-cards mb-3">
-  <div class="col-md-3">
+  <div class="col-md-4">
     <div class="card">
       <div class="card-body">
         <div class="d-flex align-items-center">
           <div class="subheader">Server</div>
         </div>
-        <div class="h3 mb-0">{{ server_name }}</div>
+        <div class="d-flex align-items-center gap-2">
+          <div class="h3 mb-0">{{ server_name }}</div>
+          {% if in_memory_active %}
+          <span class="badge bg-azure-lt">in-memory</span>
+          {% endif %}
+        </div>
         <div class="text-muted small">{{ server_version }}</div>
+        <div class="mt-2">
+          <div class="text-muted small">
+            <strong>Database:</strong> {{ conninfo.db_name }}
+          </div>
+          <div class="text-muted small">
+            <strong>User:</strong> {{ conninfo.client_user }}
+          </div>
+          <div class="text-muted small">
+            <strong>Host:</strong> {{ conninfo.host }}:{{ conninfo.server_port }}
+          </div>
+          <div class="text-muted small">
+            <strong>Client:</strong> {{ conninfo.client_addr }}:{{ conninfo.client_port }}
+          </div>
+          <div class="text-muted small">
+            <strong>Backend PID:</strong> {{ conninfo.backend_pid }}
+          </div>
+          <div class="text-muted small">
+            <strong>SSL:</strong> {{ conninfo.ssl }} | <strong>Superuser:</strong> {{ conninfo.is_superuser }} | <strong>Hot Standby:</strong> {{ conninfo.in_hot_standby }}
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card">
       <div class="card-body">
         <div class="d-flex align-items-center">
@@ -119,6 +144,13 @@
           <i class="ti ti-alert-circle text-danger"></i> Critical - near max_connections limit
           {% endif %}
         </div>
+        {% if connection_states.len() > 0 %}
+        <div class="mt-2">
+          {% for s in connection_states %}
+          <span class="badge {{ s.badge_class }} me-1 mb-1">{{ s.state }}: {{ s.count }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -228,9 +260,78 @@
   </div>
 </div>
 
+<!-- Modal pro přepnutí DB -->
+<div class="modal modal-blur fade" id="db-switch-modal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <form method="post" id="db-switch-form" onsubmit="return submitDbSwitch(event)">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Activate database</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <strong>Database:</strong> <code id="db-switch-name"></code>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Username (optional)</label>
+            <input type="text" class="form-control" name="username" placeholder="Use current if empty">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password (optional)</label>
+            <input type="password" class="form-control" name="password" placeholder="Use current if empty">
+          </div>
+          <div class="text-muted small">
+            If left empty, current credentials are reused.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Activate</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 window.currentAnalyzeSchema = window.currentAnalyzeSchema || '';
 window.currentAnalyzeTable = window.currentAnalyzeTable || '';
+
+function openDbSwitchModal(dbName) {
+  const basePath = '{{ ctx.base_path }}' === '/' ? '' : '{{ ctx.base_path }}';
+  document.getElementById('db-switch-name').textContent = dbName;
+  document.getElementById('db-switch-form').setAttribute('action', `${basePath}/databases/activate`);
+  document.getElementById('db-switch-form').setAttribute('data-db-name', dbName);
+  new bootstrap.Modal(document.getElementById('db-switch-modal')).show();
+}
+
+async function submitDbSwitch(event) {
+  event.preventDefault();
+  const form = document.getElementById('db-switch-form');
+  const action = form.getAttribute('action');
+  const payload = {
+    db_name: form.getAttribute('data-db-name'),
+    active_id: {{ active_endpoint_id }},
+    username: form.querySelector('input[name="username"]').value,
+    password: form.querySelector('input[name="password"]').value
+  };
+  const response = await fetch(action, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (response.redirected) {
+    window.location.href = response.url;
+    return false;
+  }
+  if (response.ok) {
+    window.location.href = '{{ ctx.base_path }}' === '/' ? '/' : '{{ ctx.base_path }}/';
+    return false;
+  }
+  alert('Failed to switch database');
+  return false;
+}
 
 window.showAnalyzeModal = function(schema, table) {
   window.currentAnalyzeSchema = schema;
