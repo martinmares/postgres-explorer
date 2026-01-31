@@ -137,6 +137,16 @@
                                     <span class="nav-link-title">Import</span>
                                 </a>
                             </li>
+                            {% if ctx.show_patroni %}
+                            <li class="nav-item {% block nav_patroni %}{% endblock %}">
+                                <a class="nav-link" href="{% if ctx.base_path == "/" %}/patroni{% else %}{{ ctx.base_path }}/patroni{% endif %}">
+                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                        <i class="ti ti-server-2"></i>
+                                    </span>
+                                    <span class="nav-link-title">Patroni</span>
+                                </a>
+                            </li>
+                            {% endif %}
                             <li class="nav-item {% block nav_console %}{% endblock %}">
                                 <a class="nav-link" href="/dev">
                                     <span class="nav-link-icon d-md-none d-lg-inline-block">

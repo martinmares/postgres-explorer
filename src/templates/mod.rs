@@ -7,6 +7,7 @@ pub struct AppContext {
     pub active_endpoint_name: String,
     pub show_databases: bool,
     pub in_memory_active: bool,
+    pub show_patroni: bool,
 }
 
 #[derive(Template)]
@@ -413,4 +414,11 @@ pub struct ExportWizardTemplate {
 #[template(path = "import_wizard.html")]
 pub struct ImportWizardTemplate {
     pub ctx: AppContext,
+}
+
+#[derive(Template)]
+#[template(path = "patroni.html")]
+pub struct PatroniTemplate {
+    pub ctx: AppContext,
+    pub title: String,
 }

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block nav_patroni %}active{% endblock %}
+{% block page_title %}Patroni Cluster{% endblock %}
+{% block content %}
+
+<div class="row row-cards">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h3 class="card-title">Cluster Status</h3>
+        <div class="d-flex align-items-center gap-2">
+          <span class="text-muted small" id="last-update">Loading...</span>
+          <select class="form-select form-select-sm" id="refresh-interval" style="width: auto;">
+            <option value="0">No refresh</option>
+            <option value="5">5 seconds</option>
+            <option value="10" selected>10 seconds</option>
+            <option value="30">30 seconds</option>
+          </select>
+        </div>
+      </div>
+      <div id="patroni-content" class="table-responsive">
+        <div class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="text-muted mt-2">Fetching cluster status...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+let refreshInterval = null;
+
+function getRoleBadgeClass(role) {
+  const r = role.toLowerCase();
+  if (r === 'leader' || r === 'master' || r === 'primary') return 'badge bg-green text-green-fg';
+  if (r === 'replica' || r === 'standby') return 'badge bg-blue text-blue-fg';
+  return 'badge bg-secondary';
+}
+
+function getStateBadgeClass(state) {
+  const s = state.toLowerCase();
+  if (s === 'running' || s === 'streaming') return 'badge bg-green text-green-fg';
+  if (s === 'stopped' || s === 'failed') return 'badge bg-red text-red-fg';
+  return 'badge bg-yellow text-yellow-fg';
+}
+
+function getLagClass(lag) {
+  if (lag === null || lag === 0) return 'text-success';
+  if (lag < 100) return 'text-warning';
+  return 'text-danger';
+}
+
+function formatLag(lag) {
+  if (lag === null) return '-';
+  if (lag === 0) return '0';
+  return lag.toLocaleString();
+}
+
+async function fetchPatroniStatus() {
+  try {
+    const response = await fetch(`${basePath}/patroni/status`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const nodes = await response.json();
+
+    // Update last update time
+    const now = new Date();
+    document.getElementById('last-update').textContent =
+      `Last update: ${now.toLocaleTimeString()}`;
+
+    // Find first online node with cluster data
+    const onlineNode = nodes.find(n => n.online && n.cluster);
+
+    if (!onlineNode) {
+      document.getElementById('patroni-content').innerHTML = `
+        <div class="alert alert-danger m-3">
+          <h4 class="alert-heading">No Patroni nodes available</h4>
+          <p>All configured Patroni REST API endpoints are offline or unreachable.</p>
+          <hr>
+          <p class="mb-0">Configured URLs:</p>
+          <ul>
+            ${nodes.map(n => `<li><code>${n.url}</code> - ${n.error || 'Unknown error'}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      return;
+    }
+
+    const cluster = onlineNode.cluster;
+
+    let html = `
+      <table class="table table-vcenter card-table table-hover">
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Host</th>
+            <th>Port</th>
+            <th>Role</th>
+            <th>State</th>
+            <th class="text-center">Timeline</th>
+            <th class="text-end">Lag (MB)</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    for (const member of cluster.members) {
+      const roleBadge = getRoleBadgeClass(member.role);
+      const stateBadge = getStateBadgeClass(member.state);
+      const lagClass = getLagClass(member.lag);
+
+      html += `
+        <tr>
+          <td><strong>${member.name}</strong></td>
+          <td><code>${member.host}</code></td>
+          <td>${member.port}</td>
+          <td><span class="badge ${roleBadge}">${member.role}</span></td>
+          <td><span class="badge ${stateBadge}">${member.state}</span></td>
+          <td class="text-center">${member.timeline}</td>
+          <td class="text-end ${lagClass}"><strong>${formatLag(member.lag)}</strong></td>
+        </tr>
+      `;
+    }
+
+    html += `
+        </tbody>
+      </table>
+      <div class="card-footer text-muted small">
+        Cluster: <strong>${cluster.scope}</strong> |
+        Source: <code>${onlineNode.url}</code>
+      </div>
+    `;
+
+    document.getElementById('patroni-content').innerHTML = html;
+
+  } catch (error) {
+    console.error('Failed to fetch Patroni status:', error);
+    document.getElementById('patroni-content').innerHTML = `
+      <div class="alert alert-danger m-3">
+        <h4 class="alert-heading">Failed to fetch cluster status</h4>
+        <p class="mb-0">Error: ${error.message}</p>
+      </div>
+    `;
+  }
+}
+
+function setupRefresh() {
+  const select = document.getElementById('refresh-interval');
+  const interval = parseInt(select.value);
+
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+
+  if (interval > 0) {
+    refreshInterval = setInterval(fetchPatroniStatus, interval * 1000);
+  }
+}
+
+// Initial fetch
+fetchPatroniStatus();
+
+// Setup refresh
+document.getElementById('refresh-interval').addEventListener('change', setupRefresh);
+setupRefresh();
+</script>
+
+{% endblock %}

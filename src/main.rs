@@ -67,6 +67,14 @@ struct Args {
     /// Search path override (comma-separated)
     #[arg(long, env = "CONF_DB_SEARCH_PATH")]
     conf_db_search_path: Option<String>,
+
+    /// Enable Patroni cluster monitoring
+    #[arg(long, env = "ENABLE_PATRONI", default_value_t = false)]
+    enable_patroni: bool,
+
+    /// Patroni REST API URLs (comma-separated, e.g. http://node1:8008,http://node2:8008)
+    #[arg(long, env = "PATRONI_URLS")]
+    patroni_urls: Option<String>,
 }
 
 #[tokio::main]
@@ -104,6 +112,17 @@ async fn main() -> Result<()> {
         None
     };
 
+    let patroni_urls = if args.enable_patroni {
+        args.patroni_urls.as_ref().map(|urls| {
+            urls.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+    } else {
+        None
+    };
+
     let state = Arc::new(handlers::AppState {
         db,
         base_path: base_path.clone(),
@@ -116,6 +135,7 @@ async fn main() -> Result<()> {
         tables_cache: Arc::new(RwLock::new(HashMap::new())),
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
         export_jobs: Arc::new(RwLock::new(HashMap::new())),
+        patroni_urls,
     });
 
     let router = Router::new()
@@ -191,6 +211,8 @@ async fn main() -> Result<()> {
         )
         .route("/tuning", get(handlers::tuning::tuning_page))
         .route("/dev", get(handlers::console::console))
+        .route("/patroni", get(handlers::patroni::patroni_view))
+        .route("/patroni/status", get(handlers::patroni::patroni_status))
         .nest_service("/static", axum::routing::get_service(ServeDir::new("static")))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit
         .with_state(state.clone());

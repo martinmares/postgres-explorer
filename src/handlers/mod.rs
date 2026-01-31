@@ -5,6 +5,7 @@ pub mod endpoints;
 pub mod export;
 pub mod indices;
 pub mod maintenance;
+pub mod patroni;
 pub mod schemas;
 pub mod table_detail;
 pub mod tables;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub tables_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::tables::TableRowDb>>>>,
     pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
     pub export_jobs: Arc<RwLock<HashMap<String, ExportJob>>>,
+    pub patroni_urls: Option<Vec<String>>,
 }
 
 pub const CACHE_TTL: Duration = Duration::from_secs(15 * 60);
@@ -75,6 +77,7 @@ pub fn build_ctx(state: &Arc<AppState>) -> AppContext {
         active_endpoint_name: "No connection".to_string(),
         show_databases: false,
         in_memory_active,
+        show_patroni: state.patroni_urls.is_some(),
     }
 }
 
@@ -100,6 +103,7 @@ pub fn build_ctx_with_endpoint(state: &Arc<AppState>, endpoint: Option<&crate::d
         active_endpoint_name: endpoint.map(|e| e.name.clone()).unwrap_or_else(|| "No connection".to_string()),
         show_databases,
         in_memory_active,
+        show_patroni: state.patroni_urls.is_some(),
     }
 }
 
