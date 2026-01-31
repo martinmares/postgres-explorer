@@ -110,6 +110,7 @@ async fn main() -> Result<()> {
         schemas_cache: Arc::new(RwLock::new(HashMap::new())),
         tables_cache: Arc::new(RwLock::new(HashMap::new())),
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
+        export_jobs: Arc::new(RwLock::new(HashMap::new())),
     });
 
     let router = Router::new()
@@ -166,6 +167,11 @@ async fn main() -> Result<()> {
         .route("/maintenance/analyze/{schema}/{table}", axum::routing::post(handlers::maintenance::analyze_table))
         .route("/maintenance/autovacuum/{schema}/{table}", axum::routing::post(handlers::maintenance::set_autovacuum))
         .route("/maintenance/autovacuum-reset/{schema}/{table}", axum::routing::post(handlers::maintenance::reset_autovacuum))
+        .route("/export", get(handlers::export::export_wizard))
+        .route("/maintenance/export", axum::routing::post(handlers::export::start_export))
+        .route("/maintenance/export/{job_id}/status", get(handlers::export::get_job_status))
+        .route("/maintenance/export/{job_id}/logs", get(handlers::export::stream_logs))
+        .route("/maintenance/export/{job_id}/download", get(handlers::export::download_export))
         .route(
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),

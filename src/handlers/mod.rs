@@ -1,6 +1,7 @@
 pub mod console;
 pub mod dashboard;
 pub mod endpoints;
+pub mod export;
 pub mod indices;
 pub mod maintenance;
 pub mod schemas;
@@ -9,8 +10,8 @@ pub mod tables;
 pub mod tuning;
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use std::collections::HashMap;
+use std::time::{Duration, Instant, SystemTime};
+use std::collections::{HashMap, VecDeque};
 use tokio::sync::RwLock;
 use crate::templates::AppContext;
 use axum_extra::extract::CookieJar;
@@ -27,14 +28,34 @@ pub struct AppState {
     pub schemas_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::schemas::SchemaRowDb>>>>,
     pub tables_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::tables::TableRowDb>>>>,
     pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
+    pub export_jobs: Arc<RwLock<HashMap<String, ExportJob>>>,
 }
 
 pub const CACHE_TTL: Duration = Duration::from_secs(15 * 60);
+pub const JOB_CLEANUP_AGE: Duration = Duration::from_secs(60 * 60); // 1 hour
 
 pub struct CacheEntry<T> {
     pub data: Vec<T>,
     pub fetched_at: Instant,
     pub fetching: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum JobStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportJob {
+    pub job_id: String,
+    pub status: JobStatus,
+    pub logs: VecDeque<String>,
+    pub started_at: SystemTime,
+    pub completed_at: Option<SystemTime>,
+    pub file_path: Option<String>,
+    pub error: Option<String>,
 }
 
 pub fn build_ctx(state: &Arc<AppState>) -> AppContext {

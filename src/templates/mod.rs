@@ -350,3 +350,9 @@ pub struct TuningTemplate {
     pub health_summary: Vec<crate::handlers::tuning::HealthIssue>,
     pub base_path: String,
 }
+
+#[derive(Template)]
+#[template(path = "export_wizard.html")]
+pub struct ExportWizardTemplate {
+    pub ctx: AppContext,
+}

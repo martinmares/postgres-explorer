@@ -1,0 +1,603 @@
+{% extends "base.html" %}
+{% block title %}Export Database - Postgres Explorer{% endblock %}
+{% block nav_export %}active{% endblock %}
+{% block page_title %}Export Database{% endblock %}
+{% block content %}
+
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="ti ti-download me-2"></i>Export Wizard</h3>
+      </div>
+      <div class="card-body">
+
+        <!-- Wizard Steps -->
+        <div class="steps steps-counter steps-lime mb-4">
+          <a class="step-item active" id="step-1-tab">
+            <span class="h4">1</span> Scope
+          </a>
+          <a class="step-item" id="step-2-tab">
+            <span class="h4">2</span> Format
+          </a>
+          <a class="step-item" id="step-3-tab">
+            <span class="h4">3</span> Options
+          </a>
+          <a class="step-item" id="step-4-tab">
+            <span class="h4">4</span> Execute
+          </a>
+        </div>
+
+        <!-- Step 1: Scope -->
+        <div id="step-1" class="wizard-step">
+          <h3 class="mb-3">What to export?</h3>
+          <div class="form-selectgroup form-selectgroup-boxes d-flex flex-column">
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="scope" value="full" class="form-selectgroup-input" checked>
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Full database</strong>
+                  <span class="text-muted d-block">Schema + data (recommended)</span>
+                </div>
+              </div>
+            </label>
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="scope" value="schema" class="form-selectgroup-input">
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Schema only</strong>
+                  <span class="text-muted d-block">DDL without data (for migrations)</span>
+                </div>
+              </div>
+            </label>
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="scope" value="data" class="form-selectgroup-input">
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Data only</strong>
+                  <span class="text-muted d-block">INSERT statements (for seed data)</span>
+                </div>
+              </div>
+            </label>
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="scope" value="tables" class="form-selectgroup-input">
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Select tables...</strong>
+                  <span class="text-muted d-block">Choose specific tables</span>
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <div id="table-selector" class="mt-3" style="display: none;">
+            <label class="form-label">Select tables:</label>
+            <select class="form-select" multiple id="selected-tables" style="height: 200px;">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+        </div>
+
+        <!-- Step 2: Format -->
+        <div id="step-2" class="wizard-step" style="display: none;">
+          <h3 class="mb-3">Export format</h3>
+          <div class="form-selectgroup form-selectgroup-boxes d-flex flex-column">
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="format" value="custom" class="form-selectgroup-input" checked>
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Custom (-Fc)</strong>
+                  <span class="badge bg-green-lt ms-2">Recommended</span>
+                  <span class="text-muted d-block">Compressed, flexible, supports parallel restore</span>
+                </div>
+              </div>
+            </label>
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="format" value="plain" class="form-selectgroup-input">
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>SQL text (-Fp)</strong>
+                  <span class="text-muted d-block">Human readable, plain SQL</span>
+                </div>
+              </div>
+            </label>
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="format" value="directory" class="form-selectgroup-input">
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Directory (-Fd)</strong>
+                  <span class="text-muted d-block">Parallel dump for large databases</span>
+                </div>
+              </div>
+            </label>
+            <label class="form-selectgroup-item flex-fill">
+              <input type="radio" name="format" value="tar" class="form-selectgroup-input">
+              <div class="form-selectgroup-label d-flex align-items-center p-3">
+                <div class="me-3">
+                  <span class="form-selectgroup-check"></span>
+                </div>
+                <div>
+                  <strong>Tar archive (-Ft)</strong>
+                  <span class="text-muted d-block">Archive format</span>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Step 3: Options -->
+        <div id="step-3" class="wizard-step" style="display: none;">
+          <h3 class="mb-3">Advanced options</h3>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="compress" checked>
+                  <span class="form-check-label">Compress (gzip level 6)</span>
+                </label>
+              </div>
+              <div class="mb-3">
+                <label class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="include-ownership" checked>
+                  <span class="form-check-label">Include ownership (ALTER OWNER)</span>
+                </label>
+              </div>
+              <div class="mb-3">
+                <label class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="include-drop">
+                  <span class="form-check-label">Include DROP statements</span>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="include-create-db">
+                  <span class="form-check-label">Include CREATE DATABASE</span>
+                </label>
+              </div>
+              <div class="mb-3">
+                <label class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="verbose" checked>
+                  <span class="form-check-label">Verbose logging</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Exclude table data patterns (comma-separated)</label>
+            <input type="text" class="form-control" id="exclude-patterns" placeholder="e.g., *_log,*_archive,temp_*">
+            <small class="form-hint">Tables matching these patterns will have schema exported but no data</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">PostgreSQL version</label>
+            <select class="form-select" id="pg-version">
+              <option value="auto" selected>Auto (detect from server)</option>
+              <option value="18">PostgreSQL 18</option>
+              <option value="17">PostgreSQL 17</option>
+              <option value="16">PostgreSQL 16</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Step 4: Execute -->
+        <div id="step-4" class="wizard-step" style="display: none;">
+          <h3 class="mb-3">Review & Execute</h3>
+
+          <div class="card mb-3">
+            <div class="card-header">
+              <h4 class="card-title">Command Preview</h4>
+            </div>
+            <div class="card-body">
+              <pre id="command-preview" class="bg-dark text-white p-3 rounded"><code>pg_dump ...</code></pre>
+            </div>
+          </div>
+
+          <div id="export-status" style="display: none;">
+            <!-- Terminal UI -->
+            <div class="terminal-window">
+              <div class="terminal-header">
+                <div class="terminal-controls">
+                  <span class="terminal-dot terminal-dot-red"></span>
+                  <span class="terminal-dot terminal-dot-yellow"></span>
+                  <span class="terminal-dot terminal-dot-green"></span>
+                </div>
+                <span class="terminal-title">Export Progress</span>
+                <div class="terminal-actions">
+                  <button class="btn btn-sm btn-ghost-secondary" onclick="copyLogs()" id="copy-btn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">
+                    <i class="ti ti-copy"></i>
+                  </button>
+                  <button class="btn btn-sm btn-ghost-secondary" onclick="downloadLogs()">
+                    <i class="ti ti-download"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="terminal-body" id="terminal-output"></div>
+              <div class="terminal-footer">
+                <span>Status: <strong id="job-status">Running...</strong></span>
+                <span class="ms-3">Duration: <strong id="job-duration">00:00</strong></span>
+              </div>
+            </div>
+
+            <div class="mt-3" id="download-section" style="display: none;">
+              <a href="#" id="download-link" class="btn btn-success btn-lg w-100">
+                <i class="ti ti-download me-2"></i>Download Export File
+              </a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="card-footer d-flex justify-content-between">
+        <button class="btn btn-secondary" id="btn-prev" disabled>
+          <i class="ti ti-arrow-left me-1"></i>Previous
+        </button>
+        <button class="btn btn-primary" id="btn-next">
+          Next<i class="ti ti-arrow-right ms-1"></i>
+        </button>
+        <button class="btn btn-success" id="btn-execute" style="display: none;">
+          <i class="ti ti-play me-1"></i>Start Export
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.terminal-window {
+  background: #1e1e1e;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.terminal-header {
+  background: linear-gradient(180deg, #3c3c3c 0%, #2c2c2c 100%);
+  color: #ccc;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.terminal-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.terminal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.terminal-dot-red {
+  background: #ff5f56;
+}
+
+.terminal-dot-yellow {
+  background: #ffbd2e;
+}
+
+.terminal-dot-green {
+  background: #27c93f;
+}
+
+.terminal-title {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.terminal-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.terminal-body {
+  background: #1e1e1e;
+  color: #0f0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 13px;
+  padding: 12px;
+  height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terminal-footer {
+  background: #2c2c2c;
+  color: #999;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-top: 1px solid #1a1a1a;
+}
+
+.wizard-step {
+  min-height: 400px;
+}
+
+.steps {
+  margin-bottom: 2rem;
+}
+</style>
+
+<script>
+const basePath = '{% if ctx.base_path == "/" %}{% else %}{{ ctx.base_path }}{% endif %}';
+let currentStep = 1;
+let jobId = null;
+let eventSource = null;
+let startTime = null;
+let durationInterval = null;
+
+// Navigation
+document.getElementById('btn-next').addEventListener('click', () => {
+  if (currentStep < 4) {
+    currentStep++;
+    updateStep();
+  }
+});
+
+document.getElementById('btn-prev').addEventListener('click', () => {
+  if (currentStep > 1) {
+    currentStep--;
+    updateStep();
+  }
+});
+
+document.getElementById('btn-execute').addEventListener('click', startExport);
+
+function updateStep() {
+  // Hide all steps
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById(`step-${i}`).style.display = 'none';
+    document.getElementById(`step-${i}-tab`).classList.remove('active');
+  }
+
+  // Show current step
+  document.getElementById(`step-${currentStep}`).style.display = 'block';
+  document.getElementById(`step-${currentStep}-tab`).classList.add('active');
+
+  // Update buttons
+  document.getElementById('btn-prev').disabled = currentStep === 1;
+  document.getElementById('btn-next').style.display = currentStep === 4 ? 'none' : 'inline-block';
+  document.getElementById('btn-execute').style.display = currentStep === 4 ? 'inline-block' : 'none';
+
+  // Update command preview on step 4
+  if (currentStep === 4) {
+    updateCommandPreview();
+  }
+}
+
+function updateCommandPreview() {
+  const scope = document.querySelector('input[name="scope"]:checked').value;
+  const format = document.querySelector('input[name="format"]:checked').value;
+  const compress = document.getElementById('compress').checked;
+  const ownership = document.getElementById('include-ownership').checked;
+  const drop = document.getElementById('include-drop').checked;
+  const createDb = document.getElementById('include-create-db').checked;
+  const verbose = document.getElementById('verbose').checked;
+  const excludePatterns = document.getElementById('exclude-patterns').value;
+  const pgVersion = document.getElementById('pg-version').value;
+
+  let cmd = 'PGPASSWORD=***** pg_dump';
+
+  // Connection
+  cmd += ' -h [host] -p [port] -U [username] -d [database]';
+
+  // Format
+  const formatMap = { custom: '-Fc', plain: '-Fp', directory: '-Fd', tar: '-Ft' };
+  cmd += ` ${formatMap[format]}`;
+
+  // Output file
+  cmd += ' -f /tmp/postgres-explorer-exports/{job_id}.dump';
+
+  // Scope
+  if (scope === 'schema') cmd += ' --schema-only';
+  else if (scope === 'data') cmd += ' --data-only';
+
+  // Options
+  if (compress) cmd += ' -Z6';
+  if (!ownership) cmd += ' --no-owner';
+  if (drop) cmd += ' --clean';
+  if (createDb) cmd += ' --create';
+  if (verbose) cmd += ' --verbose';
+
+  if (excludePatterns) {
+    excludePatterns.split(',').forEach(p => {
+      cmd += ` --exclude-table-data="${p.trim()}"`;
+    });
+  }
+
+  document.getElementById('command-preview').textContent = cmd;
+}
+
+async function startExport() {
+  const payload = {
+    scope: document.querySelector('input[name="scope"]:checked').value,
+    format: document.querySelector('input[name="format"]:checked').value,
+    compress: document.getElementById('compress').checked,
+    include_ownership: document.getElementById('include-ownership').checked,
+    include_drop: document.getElementById('include-drop').checked,
+    include_create_db: document.getElementById('include-create-db').checked,
+    verbose: document.getElementById('verbose').checked,
+    exclude_patterns: document.getElementById('exclude-patterns').value || null,
+    pg_version: document.getElementById('pg-version').value,
+    selected_tables: null, // TODO: Implement table selection
+  };
+
+  document.getElementById('btn-execute').disabled = true;
+  document.getElementById('export-status').style.display = 'block';
+
+  try {
+    const response = await fetch(`${basePath}/maintenance/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    jobId = data.job_id;
+
+    // Start SSE stream
+    startLogStream(jobId);
+    startDurationTimer();
+  } catch (err) {
+    appendTerminal(`ERROR: ${err.message}`, 'red');
+    document.getElementById('job-status').textContent = 'Failed';
+  }
+}
+
+function startLogStream(jobId) {
+  eventSource = new EventSource(`${basePath}/maintenance/export/${jobId}/logs`);
+
+  eventSource.onmessage = (event) => {
+    appendTerminal(event.data);
+  };
+
+  eventSource.onerror = () => {
+    eventSource.close();
+    checkJobStatus(jobId);
+  };
+}
+
+async function checkJobStatus(jobId) {
+  try {
+    const response = await fetch(`${basePath}/maintenance/export/${jobId}/status`);
+    const data = await response.json();
+
+    const statusEl = document.getElementById('job-status');
+    statusEl.textContent = data.status;
+
+    if (data.status === 'Completed') {
+      if (durationInterval) clearInterval(durationInterval);
+      statusEl.style.color = '#27c93f';
+      if (data.file_path) {
+        showDownloadLink(jobId);
+      }
+    } else if (data.status === 'Failed') {
+      if (durationInterval) clearInterval(durationInterval);
+      statusEl.style.color = '#ff5f56';
+      if (data.error) {
+        appendTerminal('', '#ff5f56');
+        appendTerminal(`=== EXPORT FAILED ===`, '#ff5f56');
+        appendTerminal(data.error, '#ff5f56');
+        appendTerminal('', '#ff5f56');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to check status:', err);
+  }
+}
+
+function appendTerminal(text, color = '#0f0') {
+  const terminal = document.getElementById('terminal-output');
+  const line = document.createElement('div');
+  line.style.color = color;
+  line.textContent = text;
+  terminal.appendChild(line);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function startDurationTimer() {
+  startTime = Date.now();
+  durationInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const secs = (elapsed % 60).toString().padStart(2, '0');
+    document.getElementById('job-duration').textContent = `${mins}:${secs}`;
+  }, 1000);
+}
+
+function showDownloadLink(jobId) {
+  document.getElementById('download-section').style.display = 'block';
+  document.getElementById('download-link').href = `${basePath}/maintenance/export/${jobId}/download`;
+}
+
+function copyLogs() {
+  const logs = document.getElementById('terminal-output').textContent;
+  const btn = document.getElementById('copy-btn');
+
+  navigator.clipboard.writeText(logs)
+    .then(() => {
+      showTooltip(btn, 'Copied! ✓', 'success');
+    })
+    .catch(() => {
+      showTooltip(btn, 'Copy failed ✗', 'danger');
+    });
+}
+
+function showTooltip(element, message, type) {
+  // Create tooltip
+  const tooltip = document.createElement('div');
+  tooltip.className = `tooltip bs-tooltip-bottom show`;
+  tooltip.innerHTML = `
+    <div class="tooltip-arrow"></div>
+    <div class="tooltip-inner bg-${type}">${message}</div>
+  `;
+
+  // Position tooltip
+  const rect = element.getBoundingClientRect();
+  tooltip.style.position = 'fixed';
+  tooltip.style.left = `${rect.left + rect.width / 2}px`;
+  tooltip.style.top = `${rect.bottom + 5}px`;
+  tooltip.style.transform = 'translateX(-50%)';
+  tooltip.style.zIndex = '9999';
+
+  document.body.appendChild(tooltip);
+
+  // Remove after 2 seconds
+  setTimeout(() => {
+    tooltip.classList.remove('show');
+    setTimeout(() => tooltip.remove(), 200);
+  }, 2000);
+}
+
+function downloadLogs() {
+  const logs = document.getElementById('terminal-output').textContent;
+  const blob = new Blob([logs], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `export_${jobId}.log`;
+  a.click();
+}
+
+// Show/hide table selector
+document.querySelectorAll('input[name="scope"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    document.getElementById('table-selector').style.display =
+      e.target.value === 'tables' ? 'block' : 'none';
+  });
+});
+</script>
+
+{% endblock %}
