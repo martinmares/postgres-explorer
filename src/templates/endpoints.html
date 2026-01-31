@@ -78,6 +78,13 @@
                         <input type="text" class="form-control" name="search_path" placeholder="public">
                         <small class="form-hint">Comma-separated list of schemas (e.g., myapp,public)</small>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="enable_blueprint">
+                            <span class="form-check-label">Enable Blueprint Database Creator</span>
+                        </label>
+                        <small class="form-hint">Allows creating databases with role separation (requires SUPERUSER or CREATEROLE+CREATEDB privileges)</small>
+                    </div>
                     <hr>
                     <h3 class="card-title">Basic Authentication</h3>
                     <div class="mb-3">

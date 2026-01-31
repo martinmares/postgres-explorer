@@ -11,6 +11,8 @@ pub struct Endpoint {
     pub password_encrypted: Option<String>,
     pub ssl_mode: Option<String>,
     pub search_path: Option<String>,
+    #[serde(default)]
+    pub enable_blueprint: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -24,6 +26,8 @@ pub struct CreateEndpoint {
     pub password: Option<String>,
     pub ssl_mode: Option<String>,
     pub search_path: Option<String>,
+    #[serde(default)]
+    pub enable_blueprint: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,4 +39,5 @@ pub struct UpdateEndpoint {
     pub password: Option<String>,
     pub ssl_mode: Option<String>,
     pub search_path: Option<String>,
+    pub enable_blueprint: Option<bool>,
 }

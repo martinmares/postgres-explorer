@@ -1,0 +1,1 @@
+ALTER TABLE endpoints ADD COLUMN enable_blueprint INTEGER NOT NULL DEFAULT 0;

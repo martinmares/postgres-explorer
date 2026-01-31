@@ -37,6 +37,7 @@
     form.querySelector('[name="password"]').value = '';
     form.querySelector('[name="ssl_mode"]').value = button.dataset.endpointSslMode || '';
     form.querySelector('[name="search_path"]').value = button.dataset.endpointSearchPath || '';
+    form.querySelector('[name="enable_blueprint"]').checked = button.dataset.endpointEnableBlueprint === 'true';
     title.textContent = 'Edit Postgres Connection';
     submitBtn.innerHTML = '<i class="ti ti-check"></i> Update Connection';
 

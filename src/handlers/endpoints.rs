@@ -22,6 +22,7 @@ pub struct CreateEndpointForm {
     password: Option<String>,
     ssl_mode: Option<String>,
     search_path: Option<String>,
+    enable_blueprint: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -33,6 +34,7 @@ pub struct UpdateEndpointForm {
     password: Option<String>,
     ssl_mode: Option<String>,
     search_path: Option<String>,
+    enable_blueprint: Option<String>,
 }
 
 fn render_list(endpoints: Vec<crate::db::models::Endpoint>, active_id: i64) -> Result<Response, (StatusCode, String)> {
@@ -105,6 +107,7 @@ pub async fn create_endpoint(
         } else {
             form.search_path
         },
+        enable_blueprint: form.enable_blueprint.is_some(),
     };
 
     if let Err(e) = db.create_endpoint(create_endpoint).await {
@@ -185,6 +188,7 @@ pub async fn update_endpoint(
         } else {
             form.search_path
         },
+        enable_blueprint: Some(form.enable_blueprint.is_some()),
     };
 
     db

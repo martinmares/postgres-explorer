@@ -75,10 +75,6 @@ struct Args {
     /// Patroni REST API URLs (comma-separated, e.g. http://node1:8008,http://node2:8008)
     #[arg(long, env = "PATRONI_URLS")]
     patroni_urls: Option<String>,
-
-    /// Enable Blueprint database creator wizard
-    #[arg(long, env = "ENABLE_BLUEPRINT", default_value_t = false)]
-    enable_blueprint: bool,
 }
 
 #[tokio::main]
@@ -109,6 +105,7 @@ async fn main() -> Result<()> {
             password_encrypted: None,
             ssl_mode: args.conf_db_ssl_mode.clone(),
             search_path: args.conf_db_search_path.clone(),
+            enable_blueprint: false,
             created_at: String::new(),
             updated_at: String::new(),
         })
@@ -140,7 +137,6 @@ async fn main() -> Result<()> {
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
         export_jobs: Arc::new(RwLock::new(HashMap::new())),
         patroni_urls,
-        blueprint_enabled: args.enable_blueprint,
     });
 
     let router = Router::new()

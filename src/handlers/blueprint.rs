@@ -7,7 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
-use crate::handlers::{build_ctx, get_active_endpoint, connect_pg, AppState};
+use crate::handlers::{build_ctx_with_endpoint, get_active_endpoint, connect_pg, AppState};
 use crate::templates::BlueprintWizardTemplate;
 
 #[derive(Debug, Deserialize)]
@@ -37,15 +37,24 @@ pub struct BlueprintPasswords {
 
 pub async fn blueprint_wizard(
     State(state): State<Arc<AppState>>,
+    jar: axum_extra::extract::CookieJar,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    if !state.blueprint_enabled {
+    let active = get_active_endpoint(&state, &jar).await;
+    if let Some(ref endpoint) = active {
+        if !endpoint.enable_blueprint {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Blueprint wizard is not enabled for this connection. Please enable it in connection settings.".to_string(),
+            ));
+        }
+    } else {
         return Err((
-            StatusCode::NOT_FOUND,
-            "Blueprint wizard is not enabled. Use --enable-blueprint flag.".to_string(),
+            StatusCode::FORBIDDEN,
+            "No active connection. Please select an endpoint first.".to_string(),
         ));
     }
 
-    let ctx = build_ctx(&state);
+    let ctx = build_ctx_with_endpoint(&state, active.as_ref());
 
     let tmpl = BlueprintWizardTemplate {
         ctx,
@@ -59,12 +68,21 @@ pub async fn blueprint_wizard(
 
 pub async fn preview_blueprint(
     State(state): State<Arc<AppState>>,
+    jar: axum_extra::extract::CookieJar,
     Json(req): Json<BlueprintRequest>,
 ) -> Result<Json<BlueprintResponse>, (StatusCode, String)> {
-    if !state.blueprint_enabled {
+    let active = get_active_endpoint(&state, &jar).await;
+    if let Some(ref endpoint) = active {
+        if !endpoint.enable_blueprint {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Blueprint wizard is not enabled for this connection".to_string(),
+            ));
+        }
+    } else {
         return Err((
-            StatusCode::NOT_FOUND,
-            "Blueprint wizard is not enabled".to_string(),
+            StatusCode::FORBIDDEN,
+            "No active connection".to_string(),
         ));
     }
 
@@ -101,12 +119,21 @@ pub async fn preview_blueprint(
 
 pub async fn execute_blueprint(
     State(state): State<Arc<AppState>>,
+    jar: axum_extra::extract::CookieJar,
     Json(req): Json<BlueprintRequest>,
 ) -> Result<Json<BlueprintResponse>, (StatusCode, String)> {
-    if !state.blueprint_enabled {
+    let active = get_active_endpoint(&state, &jar).await;
+    if let Some(ref endpoint) = active {
+        if !endpoint.enable_blueprint {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Blueprint wizard is not enabled for this connection".to_string(),
+            ));
+        }
+    } else {
         return Err((
-            StatusCode::NOT_FOUND,
-            "Blueprint wizard is not enabled".to_string(),
+            StatusCode::FORBIDDEN,
+            "No active connection".to_string(),
         ));
     }
 
@@ -120,7 +147,6 @@ pub async fn execute_blueprint(
         }));
     }
 
-    let active = get_active_endpoint(&state, &axum_extra::extract::CookieJar::default()).await;
     if active.is_none() {
         return Ok(Json(BlueprintResponse {
             success: false,

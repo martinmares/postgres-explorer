@@ -97,6 +97,27 @@ impl Database {
                 .context("Failed to run migration 003")?;
         }
 
+        // Check if enable_blueprint column exists
+        let columns = sqlx::query("PRAGMA table_info(endpoints)")
+            .fetch_all(pool)
+            .await
+            .context("Failed to inspect endpoints schema")?;
+        let mut has_enable_blueprint = false;
+        for row in &columns {
+            let name: String = row.get("name");
+            if name == "enable_blueprint" {
+                has_enable_blueprint = true;
+            }
+        }
+
+        if !has_enable_blueprint {
+            let migration_004 = include_str!("../../migrations/004_add_enable_blueprint.sql");
+            sqlx::raw_sql(migration_004)
+                .execute(pool)
+                .await
+                .context("Failed to run migration 004")?;
+        }
+
         tracing::info!("Migrations completed successfully");
         Ok(())
     }
@@ -128,8 +149,8 @@ impl Database {
         let mut tx = self.pool.begin().await?;
 
         let result = sqlx::query(
-            "INSERT INTO endpoints (name, url, insecure, username, password_encrypted, ssl_mode, search_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO endpoints (name, url, insecure, username, password_encrypted, ssl_mode, search_path, enable_blueprint)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .bind(&endpoint.name)
         .bind(&endpoint.url)
@@ -138,6 +159,7 @@ impl Database {
         .bind::<Option<String>>(None)
         .bind(&endpoint.ssl_mode)
         .bind(&endpoint.search_path)
+        .bind(endpoint.enable_blueprint)
         .execute(&mut *tx)
         .await
         .context("Failed to insert endpoint")?;
@@ -178,7 +200,7 @@ impl Database {
 
         sqlx::query(
             "UPDATE endpoints
-             SET name = ?, url = ?, insecure = ?, username = ?, ssl_mode = ?, search_path = ?, updated_at = CURRENT_TIMESTAMP
+             SET name = ?, url = ?, insecure = ?, username = ?, ssl_mode = ?, search_path = ?, enable_blueprint = COALESCE(?, enable_blueprint), updated_at = CURRENT_TIMESTAMP
              WHERE id = ?"
         )
         .bind(name)
@@ -187,6 +209,7 @@ impl Database {
         .bind(endpoint.username)
         .bind(endpoint.ssl_mode)
         .bind(endpoint.search_path)
+        .bind(endpoint.enable_blueprint)
         .bind(id)
         .execute(&mut *tx)
         .await
