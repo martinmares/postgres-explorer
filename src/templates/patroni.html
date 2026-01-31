@@ -61,6 +61,22 @@ function formatLag(lag) {
   return lag.toLocaleString();
 }
 
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return '-';
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+function getWalLagClass(bytes) {
+  if (bytes === null || bytes === 0) return 'text-success';
+  if (bytes < 16 * 1024 * 1024) return 'text-success'; // < 16 MB
+  if (bytes < 100 * 1024 * 1024) return 'text-warning'; // < 100 MB
+  return 'text-danger';
+}
+
 async function fetchPatroniStatus() {
   try {
     const response = await fetch(`${basePath}/patroni/status`);
@@ -92,37 +108,56 @@ async function fetchPatroniStatus() {
     }
 
     const cluster = onlineNode.cluster;
+    const members = onlineNode.members_extended || cluster.members;
 
     let html = `
-      <table class="table table-vcenter card-table table-hover">
+      <table class="table table-vcenter card-table table-hover table-sm">
         <thead>
           <tr>
             <th>Member</th>
-            <th>Host</th>
-            <th>Port</th>
+            <th>Host:Port</th>
             <th>Role</th>
             <th>State</th>
-            <th class="text-center">Timeline</th>
+            <th class="text-center">TL</th>
+            <th>PG Version</th>
+            <th>Patroni Ver</th>
             <th class="text-end">Lag (MB)</th>
+            <th class="text-end">WAL Lag</th>
+            <th class="text-center">Flags</th>
           </tr>
         </thead>
         <tbody>
     `;
 
-    for (const member of cluster.members) {
+    for (const member of members) {
       const roleBadge = getRoleBadgeClass(member.role);
       const stateBadge = getStateBadgeClass(member.state);
       const lagClass = getLagClass(member.lag);
+      const walLagClass = getWalLagClass(member.wal_lag_bytes);
+
+      // Build flags
+      let flags = [];
+      if (member.cluster_unlocked) {
+        flags.push('<span class="badge bg-red text-red-fg" title="Cluster is unlocked">UNLOCKED</span>');
+      }
+      if (member.tags) {
+        if (member.tags.nofailover) flags.push('<span class="badge bg-orange" title="Excluded from failover">NoFailover</span>');
+        if (member.tags.noloadbalance) flags.push('<span class="badge bg-yellow" title="Excluded from load balancing">NoLB</span>');
+        if (member.tags.nosync) flags.push('<span class="badge bg-purple" title="Not a sync standby candidate">NoSync</span>');
+      }
 
       html += `
         <tr>
           <td><strong>${member.name}</strong></td>
-          <td><code>${member.host}</code></td>
-          <td>${member.port}</td>
+          <td><code>${member.host}:${member.port}</code></td>
           <td><span class="badge ${roleBadge}">${member.role}</span></td>
           <td><span class="badge ${stateBadge}">${member.state}</span></td>
           <td class="text-center">${member.timeline}</td>
+          <td class="text-muted">${member.pg_version || '-'}</td>
+          <td class="text-muted small">${member.patroni_version || '-'}</td>
           <td class="text-end ${lagClass}"><strong>${formatLag(member.lag)}</strong></td>
+          <td class="text-end ${walLagClass}"><strong>${formatBytes(member.wal_lag_bytes)}</strong></td>
+          <td class="text-center">${flags.join(' ') || '-'}</td>
         </tr>
       `;
     }
