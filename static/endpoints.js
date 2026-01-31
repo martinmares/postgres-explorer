@@ -116,7 +116,12 @@
   function bindEndpointEvents() {
     function refreshEndpointsList() {
       const base = window.__BASE_PATH__ || '';
-      return fetch(`${base}/endpoints`, { method: 'GET' })
+      // Add cache-busting timestamp to force fresh data
+      const cacheBuster = '?_=' + Date.now();
+      return fetch(`${base}/endpoints${cacheBuster}`, {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
         .then(res => res.text())
         .then(pageHtml => {
           const parser = new DOMParser();

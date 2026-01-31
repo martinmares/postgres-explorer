@@ -4,9 +4,10 @@ use axum::extract::State;
 use axum::response::{Html, IntoResponse};
 use axum::Json;
 use axum::http::StatusCode;
+use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 
-use crate::handlers::{build_ctx, AppState};
+use crate::handlers::{build_ctx_with_endpoint, get_active_endpoint, AppState};
 use crate::templates::PatroniTemplate;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -154,15 +155,17 @@ pub struct PatroniNodeStatus {
 
 pub async fn patroni_view(
     State(state): State<Arc<AppState>>,
+    jar: axum_extra::extract::CookieJar,
 ) -> Result<Html<String>, (StatusCode, String)> {
-    let ctx = build_ctx(&state);
-
     if state.patroni_urls.is_none() {
         return Err((
             StatusCode::NOT_FOUND,
             "Patroni monitoring is not enabled. Use --enable-patroni flag.".to_string(),
         ));
     }
+
+    let active = get_active_endpoint(&state, &jar).await;
+    let ctx = build_ctx_with_endpoint(&state, active.as_ref());
 
     let tmpl = PatroniTemplate {
         ctx,

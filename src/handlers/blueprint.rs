@@ -193,15 +193,15 @@ pub async fn execute_blueprint(
         schema,
     );
 
-    for stmt in phase1_sql {
-        if let Err(e) = sqlx::query(&stmt).execute(&pg).await {
+    for (idx, stmt) in phase1_sql.iter().enumerate() {
+        if let Err(e) = sqlx::query(stmt).execute(&pg).await {
             // Ignore "already exists" errors for idempotence
             let err_msg = e.to_string();
             if !err_msg.contains("already exists") && !err_msg.contains("is already a member") {
                 return Ok(Json(BlueprintResponse {
                     success: false,
                     passwords: None,
-                    error: Some(format!("Phase 1 error: {}", e)),
+                    error: Some(format!("Phase 1 error at statement #{}: {}\n\nSQL: {}", idx + 1, e, stmt)),
                     sql_preview: None,
                 }));
             }
@@ -246,12 +246,12 @@ pub async fn execute_blueprint(
         req.revoke_db_public,
     );
 
-    for stmt in &phase2_sql {
+    for (idx, stmt) in phase2_sql.iter().enumerate() {
         if let Err(e) = sqlx::query(stmt).execute(&mut app_conn).await {
             return Ok(Json(BlueprintResponse {
                 success: false,
                 passwords: None,
-                error: Some(format!("Phase 2 error: {}", e)),
+                error: Some(format!("Phase 2 error at statement #{}: {}\n\nSQL: {}", idx + 1, e, stmt)),
                 sql_preview: None,
             }));
         }
@@ -309,7 +309,9 @@ fn generate_blueprint_sql(
         -- {db_admin} must be able to SET ROLE {app}_owner for Phase 2\n\
         GRANT {app}_owner TO {db_admin};\n\n\
         CREATE ROLE {app}_admin LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{pwd_placeholder}';\n\
-        GRANT {app}_owner TO {app}_admin;\n\n\
+        GRANT {app}_owner TO {app}_admin;\n\
+        -- {db_admin} needs membership in {app}_admin to set default privileges for it\n\
+        GRANT {app}_admin TO {db_admin};\n\n\
         CREATE ROLE {app}_rw_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{pwd_placeholder}';\n\
         GRANT {app}_rw TO {app}_rw_user;\n\n\
         CREATE ROLE {app}_ro_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{pwd_placeholder}';\n\
@@ -356,6 +358,8 @@ fn generate_blueprint_sql(
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner IN SCHEMA {schema} GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO {app}_rw;\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner IN SCHEMA {schema} GRANT EXECUTE ON FUNCTIONS TO {app}_ro, {app}_rw;\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n\n\
+        -- Switch to admin role to set its default privileges\n\
+        SET ROLE {app}_admin;\n\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT SELECT ON TABLES TO {app}_ro;\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {app}_rw;\n\
         ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT USAGE, SELECT ON SEQUENCES TO {app}_ro;\n\
@@ -385,6 +389,7 @@ fn generate_phase1_sql(
         format!("GRANT {app}_owner TO {db_admin}"),
         format!("CREATE ROLE {app}_admin LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{admin_pwd}'"),
         format!("GRANT {app}_owner TO {app}_admin"),
+        format!("GRANT {app}_admin TO {db_admin}"),
         format!("CREATE ROLE {app}_rw_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{rw_pwd}'"),
         format!("GRANT {app}_rw TO {app}_rw_user"),
         format!("CREATE ROLE {app}_ro_user LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT PASSWORD '{ro_pwd}'"),
@@ -431,7 +436,7 @@ fn generate_phase2_sql(
     sql.push(format!("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA {schema} TO {app}_rw"));
     sql.push(format!("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schema} TO {app}_ro, {app}_rw"));
 
-    // Default privileges for owner
+    // Default privileges for owner (already in SET ROLE owner)
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner IN SCHEMA {schema} GRANT SELECT ON TABLES TO {app}_ro"));
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner IN SCHEMA {schema} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {app}_rw"));
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner IN SCHEMA {schema} GRANT USAGE, SELECT ON SEQUENCES TO {app}_ro"));
@@ -439,7 +444,9 @@ fn generate_phase2_sql(
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner IN SCHEMA {schema} GRANT EXECUTE ON FUNCTIONS TO {app}_ro, {app}_rw"));
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC"));
 
-    // Default privileges for admin
+    // Switch to admin role to set its default privileges
+    sql.push(format!("SET ROLE {app}_admin"));
+
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT SELECT ON TABLES TO {app}_ro"));
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {app}_rw"));
     sql.push(format!("ALTER DEFAULT PRIVILEGES FOR ROLE {app}_admin IN SCHEMA {schema} GRANT USAGE, SELECT ON SEQUENCES TO {app}_ro"));
