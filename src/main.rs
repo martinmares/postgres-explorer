@@ -201,11 +201,13 @@ async fn main() -> Result<()> {
         .route("/maintenance/export/{job_id}/status", get(handlers::export::get_job_status))
         .route("/maintenance/export/{job_id}/logs", get(handlers::export::stream_logs))
         .route("/maintenance/export/{job_id}/download", get(handlers::export::download_export))
+        .route("/maintenance/export/{job_id}/download-log", get(handlers::export::download_log))
         .route("/import", get(handlers::export::import_wizard))
         .route("/maintenance/import/upload", axum::routing::post(handlers::export::upload_import_file))
         .route("/maintenance/import", axum::routing::post(handlers::export::start_import))
         .route("/maintenance/import/{job_id}/status", get(handlers::export::get_job_status))
         .route("/maintenance/import/{job_id}/logs", get(handlers::export::stream_logs))
+        .route("/maintenance/import/{job_id}/download-log", get(handlers::export::download_log))
         .route(
             "/tables/{schema}/{table}/modal",
             get(handlers::tables::table_modal),

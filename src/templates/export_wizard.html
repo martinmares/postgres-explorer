@@ -231,8 +231,8 @@
                   <button class="btn btn-sm btn-ghost-secondary" onclick="copyLogs()" id="copy-btn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">
                     <i class="ti ti-copy"></i>
                   </button>
-                  <button class="btn btn-sm btn-ghost-secondary" onclick="downloadLogs()">
-                    <i class="ti ti-download"></i>
+                  <button class="btn btn-sm btn-ghost-secondary" onclick="downloadLogs()" title="Download full log file">
+                    <i class="ti ti-file-text"></i>
                   </button>
                 </div>
               </div>
@@ -590,12 +590,14 @@ function showTooltip(element, message, type) {
 }
 
 function downloadLogs() {
-  const logs = document.getElementById('terminal-output').textContent;
-  const blob = new Blob([logs], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
+  if (!jobId) {
+    console.error('No job ID available for log download');
+    return;
+  }
+  // Download full log file from server (not just UI visible part)
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `export_${jobId}.log`;
+  a.href = `${basePath}/maintenance/export/${jobId}/download-log`;
+  a.download = `${jobId}.log`;
   a.click();
 }
 

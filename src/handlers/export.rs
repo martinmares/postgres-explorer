@@ -254,14 +254,26 @@ async fn run_export_job(
 
     let file_name = format!("{}.dump", job_id);
     let file_path = format!("{}/{}", output_dir, file_name);
+    let log_file_path = format!("{}/{}.log", output_dir, job_id);
+
+    // Create log file
+    let log_file = match tokio::fs::File::create(&log_file_path).await {
+        Ok(f) => Arc::new(tokio::sync::Mutex::new(f)),
+        Err(e) => {
+            let error = format!("Failed to create log file: {}", e);
+            append_log(&state, &job_id, error.clone()).await;
+            complete_job(&state, &job_id, None, Some(error)).await;
+            return;
+        }
+    };
 
     // Build pg_dump command
     let mut cmd = build_pg_dump_command(&endpoint, &req, &file_path, &state).await;
 
-    append_log(&state, &job_id, "🚀 Starting PostgreSQL export...".to_string()).await;
-    append_log(&state, &job_id, format!("📝 Scope: {:?}", req.scope)).await;
-    append_log(&state, &job_id, format!("📦 Format: {:?}", req.format)).await;
-    append_log(&state, &job_id, "".to_string()).await;
+    append_log_with_file(&state, &job_id, &log_file, "🚀 Starting PostgreSQL export...".to_string()).await;
+    append_log_with_file(&state, &job_id, &log_file, format!("📝 Scope: {:?}", req.scope)).await;
+    append_log_with_file(&state, &job_id, &log_file, format!("📦 Format: {:?}", req.format)).await;
+    append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
 
     match cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -273,54 +285,60 @@ async fn run_export_job(
 
             let state_clone = state.clone();
             let job_id_clone = job_id.clone();
+            let log_file_clone = log_file.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    append_log(&state_clone, &job_id_clone, line).await;
+                    append_log_with_file(&state_clone, &job_id_clone, &log_file_clone, line).await;
                 }
             });
 
             let state_clone = state.clone();
             let job_id_clone = job_id.clone();
+            let log_file_clone = log_file.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     // pg_dump writes verbose output to stderr, not errors
                     // Only prefix actual errors (lines starting with "pg_dump: error:")
-                    if line.contains("error:") || line.contains("FATAL") || line.contains("ERROR") {
-                        append_log(&state_clone, &job_id_clone, format!("❌ {}", line)).await;
+                    let formatted_line = if line.contains("error:") || line.contains("FATAL") || line.contains("ERROR") {
+                        format!("❌ {}", line)
                     } else {
-                        append_log(&state_clone, &job_id_clone, line).await;
-                    }
+                        line
+                    };
+                    append_log_with_file(&state_clone, &job_id_clone, &log_file_clone, formatted_line).await;
                 }
             });
 
             match child.wait().await {
                 Ok(status) => {
                     if status.success() {
-                        append_log(&state, &job_id, "".to_string()).await;
-                        append_log(&state, &job_id, "✅ Export completed successfully!".to_string()).await;
-                        append_log(&state, &job_id, format!("📦 File: {}", file_path)).await;
+                        append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
+                        append_log_with_file(&state, &job_id, &log_file, "✅ Export completed successfully!".to_string()).await;
+                        append_log_with_file(&state, &job_id, &log_file, format!("📦 Dump file: {}", file_path)).await;
+                        append_log_with_file(&state, &job_id, &log_file, format!("📋 Log file: {}", log_file_path)).await;
                         complete_job(&state, &job_id, Some(file_path), None).await;
                     } else {
                         let error = format!("Export failed with exit code: {:?}", status.code());
-                        append_log(&state, &job_id, "".to_string()).await;
-                        append_log(&state, &job_id, format!("❌ {}", error)).await;
+                        append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
+                        append_log_with_file(&state, &job_id, &log_file, format!("❌ {}", error)).await;
+                        append_log_with_file(&state, &job_id, &log_file, format!("📋 Log file: {}", log_file_path)).await;
                         complete_job(&state, &job_id, None, Some(error)).await;
                     }
                 }
                 Err(e) => {
                     let error = format!("Failed to wait for process: {}", e);
-                    append_log(&state, &job_id, format!("❌ {}", error)).await;
+                    append_log_with_file(&state, &job_id, &log_file, format!("❌ {}", error)).await;
+                    append_log_with_file(&state, &job_id, &log_file, format!("📋 Log file: {}", log_file_path)).await;
                     complete_job(&state, &job_id, None, Some(error)).await;
                 }
             }
         }
         Err(e) => {
             let error = format!("Failed to spawn pg_dump: {}", e);
-            append_log(&state, &job_id, error.clone()).await;
+            append_log_with_file(&state, &job_id, &log_file, error.clone()).await;
             complete_job(&state, &job_id, None, Some(error)).await;
         }
     }
@@ -332,14 +350,30 @@ async fn run_import_job(
     endpoint: crate::db::models::Endpoint,
     req: ImportRequest,
 ) {
-    append_log(&state, &job_id, "🚀 Starting PostgreSQL import...".to_string()).await;
-    append_log(&state, &job_id, format!("📦 File: {}", req.file_path)).await;
-    append_log(&state, &job_id, format!("🎯 Target: {}", req.target_database)).await;
-    append_log(&state, &job_id, "".to_string()).await;
+    let output_dir = "/tmp/postgres-explorer-exports";
+    std::fs::create_dir_all(output_dir).ok();
+
+    let log_file_path = format!("{}/{}.log", output_dir, job_id);
+
+    // Create log file
+    let log_file = match tokio::fs::File::create(&log_file_path).await {
+        Ok(f) => Arc::new(tokio::sync::Mutex::new(f)),
+        Err(e) => {
+            let error = format!("Failed to create log file: {}", e);
+            append_log(&state, &job_id, error.clone()).await;
+            complete_job(&state, &job_id, None, Some(error)).await;
+            return;
+        }
+    };
+
+    append_log_with_file(&state, &job_id, &log_file, "🚀 Starting PostgreSQL import...".to_string()).await;
+    append_log_with_file(&state, &job_id, &log_file, format!("📦 File: {}", req.file_path)).await;
+    append_log_with_file(&state, &job_id, &log_file, format!("🎯 Target: {}", req.target_database)).await;
+    append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
 
     // Step 1: Create database if requested
     if req.create_db && !req.target_database.is_empty() {
-        append_log(&state, &job_id, format!("📝 Creating database '{}'...", req.target_database)).await;
+        append_log_with_file(&state, &job_id, &log_file, format!("📝 Creating database '{}'...", req.target_database)).await;
 
         let password = if let Some(db) = &state.db {
             db.get_endpoint_password(&endpoint).await
@@ -367,19 +401,19 @@ async fn run_import_job(
         match create_cmd.output().await {
             Ok(output) => {
                 if output.status.success() {
-                    append_log(&state, &job_id, format!("✅ Database '{}' created successfully", req.target_database)).await;
-                    append_log(&state, &job_id, "".to_string()).await;
+                    append_log_with_file(&state, &job_id, &log_file, format!("✅ Database '{}' created successfully", req.target_database)).await;
+                    append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let error = format!("Failed to create database: {}", stderr);
-                    append_log(&state, &job_id, format!("❌ {}", error)).await;
+                    append_log_with_file(&state, &job_id, &log_file, format!("❌ {}", error)).await;
                     complete_job(&state, &job_id, None, Some(error)).await;
                     return;
                 }
             }
             Err(e) => {
                 let error = format!("Failed to execute CREATE DATABASE: {}", e);
-                append_log(&state, &job_id, format!("❌ {}", error)).await;
+                append_log_with_file(&state, &job_id, &log_file, format!("❌ {}", error)).await;
                 complete_job(&state, &job_id, None, Some(error)).await;
                 return;
             }
@@ -401,32 +435,36 @@ async fn run_import_job(
 
             let state_clone = state.clone();
             let job_id_clone = job_id.clone();
+            let log_file_clone = log_file.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    append_log(&state_clone, &job_id_clone, line).await;
+                    append_log_with_file(&state_clone, &job_id_clone, &log_file_clone, line).await;
                 }
             });
 
             let state_clone = state.clone();
             let job_id_clone = job_id.clone();
+            let log_file_clone = log_file.clone();
             let stderr_handle = tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 let mut error_lines = Vec::new();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if line.contains("error:") || line.contains("FATAL") || line.contains("ERROR") {
+                    let formatted_line = if line.contains("error:") || line.contains("FATAL") || line.contains("ERROR") {
                         // Check if this is a non-critical error
-                        if is_non_critical_error(&line) {
-                            append_log(&state_clone, &job_id_clone, format!("⚠️  {}", line)).await;
+                        let is_critical = !is_non_critical_error(&line);
+                        error_lines.push(line.clone());
+                        if is_critical {
+                            format!("❌ {}", line)
                         } else {
-                            append_log(&state_clone, &job_id_clone, format!("❌ {}", line)).await;
+                            format!("⚠️  {}", line)
                         }
-                        error_lines.push(line);
                     } else {
-                        append_log(&state_clone, &job_id_clone, line).await;
-                    }
+                        line
+                    };
+                    append_log_with_file(&state_clone, &job_id_clone, &log_file_clone, formatted_line).await;
                 }
                 error_lines
             });
@@ -437,8 +475,9 @@ async fn run_import_job(
                     let error_lines = stderr_handle.await.unwrap_or_default();
 
                     if status.success() {
-                        append_log(&state, &job_id, "".to_string()).await;
-                        append_log(&state, &job_id, "✅ Import completed successfully!".to_string()).await;
+                        append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
+                        append_log_with_file(&state, &job_id, &log_file, "✅ Import completed successfully!".to_string()).await;
+                        append_log_with_file(&state, &job_id, &log_file, format!("📋 Log file: {}", log_file_path)).await;
                         complete_job(&state, &job_id, None, None).await;
 
                         // Cleanup import file
@@ -449,28 +488,30 @@ async fn run_import_job(
                             error_lines.iter().all(|line| is_non_critical_error(line));
 
                         if all_non_critical {
-                            append_log(&state, &job_id, "".to_string()).await;
-                            append_log(&state, &job_id, "⚠️  Import completed with warnings (non-critical errors ignored)".to_string()).await;
+                            append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
+                            append_log_with_file(&state, &job_id, &log_file, "⚠️  Import completed with warnings (non-critical errors ignored)".to_string()).await;
+                            append_log_with_file(&state, &job_id, &log_file, format!("📋 Log file: {}", log_file_path)).await;
                             complete_job(&state, &job_id, None, None).await;
                             tokio::fs::remove_file(&req.file_path).await.ok();
                         } else {
                             let error = format!("Import failed with exit code: {:?}", status.code());
-                            append_log(&state, &job_id, "".to_string()).await;
-                            append_log(&state, &job_id, format!("❌ {}", error)).await;
+                            append_log_with_file(&state, &job_id, &log_file, "".to_string()).await;
+                            append_log_with_file(&state, &job_id, &log_file, format!("❌ {}", error)).await;
+                            append_log_with_file(&state, &job_id, &log_file, format!("📋 Log file: {}", log_file_path)).await;
                             complete_job(&state, &job_id, None, Some(error)).await;
                         }
                     }
                 }
                 Err(e) => {
                     let error = format!("Failed to wait for process: {}", e);
-                    append_log(&state, &job_id, format!("❌ {}", error)).await;
+                    append_log_with_file(&state, &job_id, &log_file, format!("❌ {}", error)).await;
                     complete_job(&state, &job_id, None, Some(error)).await;
                 }
             }
         }
         Err(e) => {
             let error = format!("Failed to spawn pg_restore: {}", e);
-            append_log(&state, &job_id, error.clone()).await;
+            append_log_with_file(&state, &job_id, &log_file, error.clone()).await;
             complete_job(&state, &job_id, None, Some(error)).await;
         }
     }
@@ -769,6 +810,23 @@ async fn append_log(state: &Arc<AppState>, job_id: &str, line: String) {
     }
 }
 
+async fn append_log_with_file(
+    state: &Arc<AppState>,
+    job_id: &str,
+    log_file: &Arc<tokio::sync::Mutex<tokio::fs::File>>,
+    line: String,
+) {
+    // Append to in-memory VecDeque (for UI streaming)
+    append_log(state, job_id, line.clone()).await;
+
+    // Append to log file on disk (for full log download)
+    let mut file = log_file.lock().await;
+    let line_with_newline = format!("{}\n", line);
+    if let Err(e) = file.write_all(line_with_newline.as_bytes()).await {
+        tracing::error!("Failed to write to log file: {}", e);
+    }
+}
+
 async fn complete_job(state: &Arc<AppState>, job_id: &str, file_path: Option<String>, error: Option<String>) {
     let mut jobs = state.export_jobs.write().await;
     if let Some(job) = jobs.get_mut(job_id) {
@@ -864,6 +922,40 @@ pub async fn download_export(
     Ok((
         [
             (header::CONTENT_TYPE, "application/octet-stream".to_string()),
+            (header::CONTENT_DISPOSITION, content_disposition),
+        ],
+        file_content,
+    ))
+}
+
+pub async fn download_log(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let jobs = state.export_jobs.read().await;
+    let _job = jobs.get(&job_id)
+        .ok_or((StatusCode::NOT_FOUND, "Job not found".to_string()))?;
+    drop(jobs);
+
+    // Log file path
+    let log_file_path = format!("/tmp/postgres-explorer-exports/{}.log", job_id);
+
+    // Check if log file exists
+    if !tokio::fs::try_exists(&log_file_path).await.unwrap_or(false) {
+        return Err((StatusCode::NOT_FOUND, "Log file not found".to_string()));
+    }
+
+    // Read log file
+    let file_content = tokio::fs::read(&log_file_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read log file: {}", e)))?;
+
+    let file_name = format!("{}.log", job_id);
+    let content_disposition = format!("attachment; filename=\"{}\"", file_name);
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8".to_string()),
             (header::CONTENT_DISPOSITION, content_disposition),
         ],
         file_content,

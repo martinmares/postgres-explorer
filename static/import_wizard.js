@@ -214,13 +214,14 @@
   }
 
   function saveLogsImport() {
-    const terminal = getEl('terminal-output-import');
-    const text = Array.from(terminal.children).map(line => line.textContent).join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
+    if (!jobId) {
+      console.error('No job ID available for log download');
+      return;
+    }
+    // Download full log file from server (not just UI visible part)
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `import_${jobId}_log.txt`;
+    a.href = `${basePath}/maintenance/import/${jobId}/download-log`;
+    a.download = `${jobId}.log`;
     a.click();
     URL.revokeObjectURL(url);
   }
