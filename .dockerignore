@@ -1,0 +1,36 @@
+# Git
+.git/
+.gitignore
+
+# Rust build artifacts (kromě finální binárky)
+target/debug/
+target/*/debug/
+target/*/incremental/
+target/doc/
+target/tmp/
+
+# Dokumentace a dev soubory
+*.md
+README*
+LICENSE*
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Testy
+tests/
+benches/
+
+# Různé
+.env
+.env.*
+*.log
