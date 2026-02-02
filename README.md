@@ -80,6 +80,9 @@ Use `.env.example` for local stateless config against the dev container.
 - Filters use substring match with OR via comma:
   - `related` matches any name containing `related`
   - `related,act,bill` matches any name containing any of those terms
+- Build Linux binary on macOS:
+  - `brew install zigbuild`
+  - `cargo zigbuild --release --target x86_64-unknown-linux-musl`
 
 ## License
 
