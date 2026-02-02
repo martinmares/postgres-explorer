@@ -11,9 +11,31 @@
       </div>
       <div class="card-body">
         <div class="mb-3">
+          <label class="form-label">Execution Mode</label>
+          <div class="form-selectgroup">
+            <label class="form-selectgroup-item">
+              <input type="radio" name="exec-mode" value="psql" class="form-selectgroup-input" checked>
+              <span class="form-selectgroup-label">
+                <i class="ti ti-terminal me-2"></i>
+                <strong>psql</strong> (advanced)
+                <span class="text-muted d-block small">Full psql features, may crash on large queries</span>
+              </span>
+            </label>
+            <label class="form-selectgroup-item">
+              <input type="radio" name="exec-mode" value="safe" class="form-selectgroup-input">
+              <span class="form-selectgroup-label">
+                <i class="ti ti-shield-check me-2"></i>
+                <strong>Safe Query</strong>
+                <span class="text-muted d-block small">Auto-stops at 1000 rows, memory safe</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-3">
           <label for="query-editor" class="form-label">
             SQL Query
-            <span class="text-muted ms-2">(supports psql meta-commands like \l, \dt, \d tablename)</span>
+            <span class="text-muted ms-2" id="mode-hint">(supports psql meta-commands like \l, \dt, \d tablename)</span>
           </label>
           <textarea
             id="query-editor"
@@ -185,6 +207,22 @@ const MAX_HISTORY = 50;
 // Load history on page load
 document.addEventListener('DOMContentLoaded', function() {
   loadHistory();
+
+  // Update mode hint when switching execution mode
+  document.querySelectorAll('input[name="exec-mode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+      const modeHint = document.getElementById('mode-hint');
+      const queryEditor = document.getElementById('query-editor');
+
+      if (this.value === 'safe') {
+        modeHint.textContent = '(SQL queries only, auto-stops at 1000 rows)';
+        queryEditor.placeholder = 'SELECT * FROM users;\n\nSafe mode limits output to 1000 rows';
+      } else {
+        modeHint.textContent = '(supports psql meta-commands like \\l, \\dt, \\d tablename)';
+        queryEditor.placeholder = 'SELECT * FROM users;\n\nor use psql commands:\n\\l         -- list databases\n\\dt        -- list tables\n\\d table   -- describe table';
+      }
+    });
+  });
 });
 
 // Ctrl+Enter to execute
@@ -249,6 +287,7 @@ async function executeQuery() {
   }
 
   const readOnly = document.getElementById('read-only-mode').checked;
+  const safeMode = document.querySelector('input[name="exec-mode"]:checked').value === 'safe';
 
   // Check if query is destructive
   try {
@@ -288,7 +327,7 @@ async function executeQuery() {
   // Show output section
   document.getElementById('output-section').style.display = 'block';
   document.getElementById('terminal-output').textContent = '';
-  document.getElementById('terminal-status').textContent = 'Running...';
+  document.getElementById('terminal-status').textContent = safeMode ? 'Running (Safe Mode)...' : 'Running...';
   document.getElementById('terminal-duration').textContent = '';
 
   startTime = Date.now();
@@ -299,7 +338,7 @@ async function executeQuery() {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, read_only: readOnly })
+      body: JSON.stringify({ query, read_only: readOnly, safe_mode: safeMode })
     });
 
     if (!response.ok) {

@@ -1,5 +1,5 @@
 use axum::extract::State;
-use axum::response::{Html, Sse, IntoResponse};
+use axum::response::{Html, Sse};
 use axum::http::StatusCode;
 use axum::Json;
 use askama::Template;
@@ -12,6 +12,9 @@ use std::convert::Infallible;
 use std::time::Duration;
 use axum_extra::extract::CookieJar;
 use regex::Regex;
+use tokio_postgres::{NoTls, Client};
+use postgres_openssl::MakeTlsConnector;
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 
 use crate::handlers::{build_ctx_with_endpoint, get_active_endpoint, AppState};
 use crate::templates::ConsoleTemplate;
@@ -20,6 +23,8 @@ use crate::templates::ConsoleTemplate;
 pub struct ExecuteRequest {
     pub query: String,
     pub read_only: bool,
+    #[serde(default)]
+    pub safe_mode: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -137,11 +142,15 @@ pub async fn execute_query(
 
     state.export_jobs.write().await.insert(job_id.clone(), job);
 
-    // Spawn background task
+    // Spawn background task - choose mode
     let state_clone = state.clone();
     let job_id_clone = job_id.clone();
     tokio::spawn(async move {
-        run_psql_query(state_clone, job_id_clone, active, req).await;
+        if req.safe_mode {
+            run_safe_query(state_clone, job_id_clone, active, req).await;
+        } else {
+            run_psql_query(state_clone, job_id_clone, active, req).await;
+        }
     });
 
     Ok(Json(ExecuteResponse { job_id }))
@@ -464,4 +473,291 @@ pub async fn clear_history(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clear history: {}", e)))?;
 
     Ok(StatusCode::OK)
+}
+
+// Helper function to connect with TLS
+async fn connect_with_tls(conn_str: &str, insecure: bool) -> Result<Client, String> {
+    let mut builder = SslConnector::builder(SslMethod::tls())
+        .map_err(|e| format!("Failed to create SSL connector: {}", e))?;
+
+    if insecure {
+        builder.set_verify(SslVerifyMode::NONE);
+    }
+
+    let tls_connector = MakeTlsConnector::new(builder.build());
+    let (client, connection) = tokio_postgres::connect(conn_str, tls_connector)
+        .await
+        .map_err(|e| format!("Failed to connect: {}", e))?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            tracing::error!("Connection error: {}", e);
+        }
+    });
+
+    Ok(client)
+}
+
+// Helper function to connect without TLS
+async fn connect_no_tls(conn_str: &str) -> Result<Client, String> {
+    let (client, connection) = tokio_postgres::connect(conn_str, NoTls)
+        .await
+        .map_err(|e| format!("Failed to connect: {}", e))?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            tracing::error!("Connection error: {}", e);
+        }
+    });
+
+    Ok(client)
+}
+
+// Safe Query mode - using tokio-postgres with row limit
+async fn run_safe_query(
+    state: Arc<AppState>,
+    job_id: String,
+    endpoint: crate::db::models::Endpoint,
+    req: ExecuteRequest,
+) {
+    const MAX_ROWS: usize = 1000;
+
+    // Get password
+    let password = if let Some(db) = &state.db {
+        db.get_endpoint_password(&endpoint).await
+    } else {
+        state.stateless_password.clone()
+    };
+
+    let conn_parts = crate::handlers::export::parse_connection_url(&endpoint.url);
+
+    // Build connection string
+    let mut conn_str = format!(
+        "host={} port={} dbname={}",
+        conn_parts.host, conn_parts.port, conn_parts.database
+    );
+
+    if let Some(ref username) = endpoint.username {
+        conn_str.push_str(&format!(" user={}", username));
+    }
+
+    if let Some(ref pw) = password {
+        conn_str.push_str(&format!(" password={}", pw));
+    }
+
+    // SSL mode
+    let ssl_mode = endpoint.ssl_mode.as_deref().unwrap_or("prefer");
+    conn_str.push_str(&format!(" sslmode={}", ssl_mode));
+
+    // Statement timeout
+    conn_str.push_str(" options='-c statement_timeout=30s'");
+
+    append_log(&state, &job_id, "🚀 Starting Safe Query execution...".to_string()).await;
+    append_log(&state, &job_id, "🔒 Auto-stops at 1000 rows".to_string()).await;
+    if req.read_only {
+        append_log(&state, &job_id, "🔒 Running in READ-ONLY mode".to_string()).await;
+    }
+    append_log(&state, &job_id, "".to_string()).await;
+
+    // Connect to database
+    let client = if ssl_mode == "disable" {
+        match connect_no_tls(&conn_str).await {
+            Ok(c) => c,
+            Err(error) => {
+                append_log(&state, &job_id, format!("❌ {}", error)).await;
+                complete_job(&state, &job_id, None, Some(error)).await;
+                return;
+            }
+        }
+    } else {
+        match connect_with_tls(&conn_str, endpoint.insecure).await {
+            Ok(c) => c,
+            Err(error) => {
+                append_log(&state, &job_id, format!("❌ {}", error)).await;
+                complete_job(&state, &job_id, None, Some(error)).await;
+                return;
+            }
+        }
+    };
+
+    // Set read-only if requested
+    if req.read_only {
+        if let Err(e) = client.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY", &[]).await {
+            let error = format!("Failed to set read-only mode: {}", e);
+            append_log(&state, &job_id, format!("❌ {}", error)).await;
+            complete_job(&state, &job_id, None, Some(error)).await;
+            return;
+        }
+    }
+
+    // Execute query
+    append_log(&state, &job_id, format!("Executing: {}", req.query)).await;
+    append_log(&state, &job_id, "".to_string()).await;
+
+    match execute_query_with_limit(&client, &req.query, MAX_ROWS, &state, &job_id).await {
+        Ok(row_count) => {
+            append_log(&state, &job_id, "".to_string()).await;
+            if row_count >= MAX_ROWS {
+                append_log(&state, &job_id, format!("⚠️  Output limit reached ({} rows). Please use LIMIT in your query!", MAX_ROWS)).await;
+            }
+            append_log(&state, &job_id, format!("✅ Query completed ({} rows returned)", row_count)).await;
+            complete_job(&state, &job_id, None, None).await;
+        }
+        Err(e) => {
+            let error = format!("Query failed: {}", e);
+            append_log(&state, &job_id, "".to_string()).await;
+            append_log(&state, &job_id, format!("❌ {}", error)).await;
+            complete_job(&state, &job_id, None, Some(error)).await;
+        }
+    }
+}
+
+async fn execute_query_with_limit(
+    client: &Client,
+    query: &str,
+    max_rows: usize,
+    state: &Arc<AppState>,
+    job_id: &str,
+) -> Result<usize, tokio_postgres::Error> {
+    use futures::StreamExt;
+
+    // Use query_raw for streaming (doesn't load all rows into memory)
+    let row_stream = client.query_raw(query, std::iter::empty::<i32>()).await?;
+    futures::pin_mut!(row_stream);
+
+    let mut row_count = 0;
+    let mut header_printed = false;
+
+    while let Some(row_result) = row_stream.next().await {
+        let row = row_result?;
+
+        // Print header on first row
+        if !header_printed {
+            let columns: Vec<String> = row
+                .columns()
+                .iter()
+                .map(|col| col.name().to_string())
+                .collect();
+
+            let header = columns.join(" | ");
+            append_log(state, job_id, header.clone()).await;
+            append_log(state, job_id, "-".repeat(header.len())).await;
+            header_printed = true;
+        }
+
+        // Print row values
+        let mut values = Vec::new();
+        for i in 0..row.len() {
+            let val = format_postgres_value(&row, i);
+            values.push(val);
+        }
+        append_log(state, job_id, values.join(" | ")).await;
+
+        row_count += 1;
+        if row_count >= max_rows {
+            break;
+        }
+    }
+
+    if row_count == 0 {
+        append_log(state, job_id, "No rows returned".to_string()).await;
+    }
+
+    Ok(row_count)
+}
+
+fn format_postgres_value(row: &tokio_postgres::Row, idx: usize) -> String {
+    use tokio_postgres::types::Type;
+    use chrono::{NaiveDateTime, DateTime, FixedOffset};
+
+    let col = &row.columns()[idx];
+    let col_type = col.type_();
+
+    // Handle each type explicitly
+    match col_type {
+        &Type::BOOL => {
+            row.try_get::<_, Option<bool>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| if v { "t" } else { "f" }.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::INT2 => {
+            row.try_get::<_, Option<i16>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::INT4 => {
+            row.try_get::<_, Option<i32>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::INT8 => {
+            row.try_get::<_, Option<i64>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::FLOAT4 => {
+            row.try_get::<_, Option<f32>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::FLOAT8 => {
+            row.try_get::<_, Option<f64>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::TIMESTAMP => {
+            row.try_get::<_, Option<NaiveDateTime>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::TIMESTAMPTZ => {
+            row.try_get::<_, Option<DateTime<FixedOffset>>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::UUID => {
+            row.try_get::<_, Option<uuid::Uuid>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::JSON | &Type::JSONB => {
+            // JSONB needs special handling - use serde_json::Value
+            row.try_get::<_, Option<serde_json::Value>>(idx)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "".to_string())
+        }
+        &Type::TEXT | &Type::VARCHAR | &Type::BPCHAR | &Type::NAME => {
+            row.try_get::<_, Option<String>>(idx)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "".to_string())
+        }
+        _ => {
+            // For any other type, try as string
+            row.try_get::<_, Option<String>>(idx)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "".to_string())
+        }
+    }
 }
