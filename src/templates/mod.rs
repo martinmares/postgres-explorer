@@ -238,6 +238,8 @@ pub struct IndicesTableTemplate {
 pub struct ConsoleTemplate {
     pub ctx: AppContext,
     pub title: String,
+    pub use_local_storage: bool,
+    pub endpoint_id: i64,
 }
 
 #[derive(Template)]

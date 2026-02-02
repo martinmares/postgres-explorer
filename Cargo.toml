@@ -1,6 +1,6 @@
 [package]
 name = "postgres-explorer"
-version = "0.6.5"
+version = "0.7.2"
 edition = "2024"
 
 [dependencies]

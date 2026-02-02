@@ -37,6 +37,7 @@ pub struct AppState {
     pub indices_cache: Arc<RwLock<HashMap<i64, CacheEntry<crate::handlers::indices::IndexRowDb>>>>,
     pub export_jobs: Arc<RwLock<HashMap<String, ExportJob>>>,
     pub patroni_urls: Option<Vec<String>>,
+    pub enable_destructive_commands: bool,
 }
 
 pub const CACHE_TTL: Duration = Duration::from_secs(15 * 60);

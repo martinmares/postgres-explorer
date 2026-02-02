@@ -118,6 +118,20 @@ impl Database {
                 .context("Failed to run migration 004")?;
         }
 
+        // Check if query_history table exists
+        let tables = sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name='query_history'")
+            .fetch_all(pool)
+            .await
+            .context("Failed to check for query_history table")?;
+
+        if tables.is_empty() {
+            let migration_005 = include_str!("../../migrations/005_add_query_history.sql");
+            sqlx::raw_sql(migration_005)
+                .execute(pool)
+                .await
+                .context("Failed to run migration 005")?;
+        }
+
         tracing::info!("Migrations completed successfully");
         Ok(())
     }
@@ -279,5 +293,72 @@ impl Database {
         let password = String::from_utf8(plaintext)
             .context("Decrypted password is not valid UTF-8")?;
         Ok(password)
+    }
+
+    // Query history methods
+    pub async fn save_query_history(
+        &self,
+        endpoint_id: i64,
+        query: &str,
+        status: &str,
+        duration_ms: Option<i64>,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO query_history (endpoint_id, query_text, status, duration_ms)
+             VALUES (?, ?, ?, ?)"
+        )
+        .bind(endpoint_id)
+        .bind(query)
+        .bind(status)
+        .bind(duration_ms)
+        .execute(&self.pool)
+        .await
+        .context("Failed to save query history")?;
+
+        // Cleanup old entries (keep last 1000 per endpoint)
+        sqlx::query(
+            "DELETE FROM query_history
+             WHERE endpoint_id = ?
+             AND id NOT IN (
+                 SELECT id FROM query_history
+                 WHERE endpoint_id = ?
+                 ORDER BY executed_at DESC
+                 LIMIT 1000
+             )"
+        )
+        .bind(endpoint_id)
+        .bind(endpoint_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to cleanup old query history")?;
+
+        Ok(())
+    }
+
+    pub async fn get_query_history(&self, endpoint_id: i64, limit: i64) -> Result<Vec<models::QueryHistory>> {
+        let rows = sqlx::query_as::<_, models::QueryHistory>(
+            "SELECT id, endpoint_id, query_text, executed_at, status, duration_ms
+             FROM query_history
+             WHERE endpoint_id = ?
+             ORDER BY executed_at DESC
+             LIMIT ?"
+        )
+        .bind(endpoint_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to fetch query history")?;
+
+        Ok(rows)
+    }
+
+    pub async fn clear_query_history(&self, endpoint_id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM query_history WHERE endpoint_id = ?")
+            .bind(endpoint_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to clear query history")?;
+
+        Ok(())
     }
 }

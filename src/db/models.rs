@@ -41,3 +41,13 @@ pub struct UpdateEndpoint {
     pub search_path: Option<String>,
     pub enable_blueprint: Option<bool>,
 }
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct QueryHistory {
+    pub id: i64,
+    pub endpoint_id: i64,
+    pub query_text: String,
+    pub executed_at: String,
+    pub status: String,
+    pub duration_ms: Option<i64>,
+}

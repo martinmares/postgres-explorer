@@ -75,6 +75,10 @@ struct Args {
     /// Patroni REST API URLs (comma-separated, e.g. http://node1:8008,http://node2:8008)
     #[arg(long, env = "PATRONI_URLS")]
     patroni_urls: Option<String>,
+
+    /// Enable destructive commands in Dev Console (DROP, DELETE, TRUNCATE)
+    #[arg(long, env = "ENABLE_DESTRUCTIVE_COMMANDS", default_value_t = false)]
+    enable_destructive_commands: bool,
 }
 
 #[tokio::main]
@@ -137,6 +141,7 @@ async fn main() -> Result<()> {
         indices_cache: Arc::new(RwLock::new(HashMap::new())),
         export_jobs: Arc::new(RwLock::new(HashMap::new())),
         patroni_urls,
+        enable_destructive_commands: args.enable_destructive_commands,
     });
 
     let router = Router::new()
@@ -214,6 +219,12 @@ async fn main() -> Result<()> {
         )
         .route("/tuning", get(handlers::tuning::tuning_page))
         .route("/dev", get(handlers::console::console))
+        .route("/dev/execute", axum::routing::post(handlers::console::execute_query))
+        .route("/dev/check", axum::routing::post(handlers::console::check_destructive))
+        .route("/dev/{job_id}/logs", get(handlers::console::stream_console_logs))
+        .route("/dev/history", get(handlers::console::get_history))
+        .route("/dev/history", axum::routing::post(handlers::console::save_history))
+        .route("/dev/history", axum::routing::delete(handlers::console::clear_history))
         .route("/patroni", get(handlers::patroni::patroni_view))
         .route("/patroni/status", get(handlers::patroni::patroni_status))
         .route("/blueprint", get(handlers::blueprint::blueprint_wizard))

@@ -68,7 +68,7 @@ pub struct UploadResponse {
     pub format: String, // "custom", "plain", "directory", "tar"
 }
 
-const MAX_LOG_LINES: usize = 10000; // Increased from 100 to support long-running exports
+pub const MAX_LOG_LINES: usize = 10000; // Increased from 100 to support long-running exports
 const MAX_UPLOAD_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2GB
 
 pub async fn import_wizard(
@@ -766,13 +766,13 @@ fn detect_dump_format(data: &[u8]) -> String {
     "custom".to_string()
 }
 
-struct ConnectionParts {
-    host: String,
-    port: String,
-    database: String,
+pub struct ConnectionParts {
+    pub host: String,
+    pub port: String,
+    pub database: String,
 }
 
-fn parse_connection_url(url: &str) -> ConnectionParts {
+pub fn parse_connection_url(url: &str) -> ConnectionParts {
     // Parse postgres://[user:pass@]host[:port]/database
     let without_scheme = url.strip_prefix("postgres://")
         .or_else(|| url.strip_prefix("postgresql://"))
