@@ -733,6 +733,8 @@ fn is_non_critical_error(error_line: &str) -> bool {
         "already exists",                         // Re-running import or --clean issues
         "constraint .* already exists",           // Duplicate constraint warnings
         "relation .* already exists",             // Table already exists
+        "must be owner of extension",             // COMMENT ON EXTENSION when not superuser
+        "must be superuser to create extension",  // Extensions already exist (with --clean)
     ];
 
     non_critical_patterns.iter().any(|pattern| {
