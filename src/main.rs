@@ -220,11 +220,15 @@ async fn main() -> Result<()> {
         .nest_service("/static", axum::routing::get_service(ServeDir::new("static")))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit
         .with_state(state.clone());
-    let app = if base_path == "/" {
-        router
-    } else {
-        Router::new().nest(&base_path, router)
-    };
+
+    // Health check endpoint - always available at root, not affected by base_path
+    let app = Router::new()
+        .route("/healthz", get(handlers::health::healthz))
+        .merge(if base_path == "/" {
+            router
+        } else {
+            Router::new().nest(&base_path, router)
+        });
 
     let addr = format!("{}:{}", args.host, args.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;

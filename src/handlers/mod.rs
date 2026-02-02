@@ -4,6 +4,7 @@ pub mod dashboard;
 pub mod databases;
 pub mod endpoints;
 pub mod export;
+pub mod health;
 pub mod indices;
 pub mod maintenance;
 pub mod patroni;

@@ -68,7 +68,7 @@ pub struct UploadResponse {
     pub format: String, // "custom", "plain", "directory", "tar"
 }
 
-const MAX_LOG_LINES: usize = 100;
+const MAX_LOG_LINES: usize = 10000; // Increased from 100 to support long-running exports
 const MAX_UPLOAD_SIZE: u64 = 2 * 1024 * 1024 * 1024; // 2GB
 
 pub async fn import_wizard(
@@ -812,6 +812,8 @@ pub async fn stream_logs(
                 if let Some(job) = jobs.get(&job_id) {
                     let logs: Vec<String> = job.logs.iter().skip(last_index).cloned().collect();
                     let new_index = last_index + logs.len();
+                    let is_done = matches!(job.status, JobStatus::Completed | JobStatus::Failed);
+                    drop(jobs); // Release lock before potentially waiting
 
                     if !logs.is_empty() {
                         let data = logs.join("\n");
@@ -819,11 +821,16 @@ pub async fn stream_logs(
                         return Some((Ok(event), new_index));
                     }
 
+                    // Send keepalive ping even if no new logs (prevents browser timeout)
+                    if !is_done && last_index % 50 == 0 {
+                        let event = axum::response::sse::Event::default()
+                            .comment("keepalive");
+                        return Some((Ok(event), new_index));
+                    }
+
                     // Check if job is done
-                    if matches!(job.status, JobStatus::Completed | JobStatus::Failed) {
-                        if last_index >= job.logs.len() {
-                            return None; // Stream ends
-                        }
+                    if is_done && last_index >= new_index {
+                        return None; // Stream ends
                     }
                 } else {
                     return None; // Job not found
