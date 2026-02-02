@@ -231,7 +231,7 @@ pub async fn dashboard(
                     COALESCE(parent.relname, c.relname) as parent_name,
                     COALESCE(parent_ns.nspname, n.nspname) as parent_schema,
                     pg_total_relation_size(c.oid) as size_bytes,
-                    COALESCE(NULLIF(s.n_live_tup, 0), NULLIF(c.reltuples, 0), 0)::bigint as row_estimate,
+                    GREATEST(COALESCE(s.n_live_tup, c.reltuples::bigint, 0), 0) as row_estimate,
                     CASE WHEN parent.oid IS NOT NULL THEN true ELSE false END as is_partition
                 FROM pg_class c
                 JOIN pg_namespace n ON n.oid = c.relnamespace
