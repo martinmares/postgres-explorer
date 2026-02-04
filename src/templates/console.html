@@ -46,9 +46,11 @@
           ></textarea>
           <div class="form-text">
             <strong>Shortcuts:</strong>
-            <kbd>Ctrl</kbd>+<kbd>Enter</kbd> Execute |
-            <kbd>Ctrl</kbd>+<kbd>↑</kbd> Previous query |
-            <kbd>Ctrl</kbd>+<kbd>↓</kbd> Next query
+            <span id="shortcuts-description">
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> Execute |
+              <kbd>Ctrl</kbd>+<kbd>↑</kbd> Previous query |
+              <kbd>Ctrl</kbd>+<kbd>↓</kbd> Next query
+            </span>
           </div>
         </div>
 
@@ -225,18 +227,30 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// Ctrl+Enter to execute
+const isMacPlatform = navigator.platform.toUpperCase().includes('MAC') || navigator.userAgent.toUpperCase().includes('MAC');
+if (isMacPlatform) {
+  document.getElementById('shortcuts-description').innerHTML = `
+    <kbd>Meta</kbd>+<kbd>Enter</kbd> Execute |
+    <kbd>Meta</kbd>+<kbd>↑</kbd> Previous query |
+    <kbd>Meta</kbd>+<kbd>↓</kbd> Next query
+  `;
+}
+
+// Modifier to use for shortcuts
 document.getElementById('query-editor').addEventListener('keydown', function(e) {
-  if (e.ctrlKey && e.key === 'Enter') {
+  const modifierUsed = isMacPlatform ? e.metaKey : e.ctrlKey;
+
+  if (modifierUsed && e.key === 'Enter') {
     e.preventDefault();
     executeQuery();
   }
-  // Arrow up/down for history navigation
-  if (e.key === 'ArrowUp' && e.ctrlKey) {
+
+  if (modifierUsed && e.key === 'ArrowUp') {
     e.preventDefault();
     loadPreviousQuery();
   }
-  if (e.key === 'ArrowDown' && e.ctrlKey) {
+
+  if (modifierUsed && e.key === 'ArrowDown') {
     e.preventDefault();
     loadNextQuery();
   }

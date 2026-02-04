@@ -198,7 +198,7 @@ async fn run_psql_query(
     if req.read_only {
         append_log(&state, &job_id, "🔒 Running in READ-ONLY mode".to_string()).await;
     }
-    append_log(&state, &job_id, "⚠️  Note: Output limited to first 100 rows to prevent memory issues".to_string()).await;
+    append_log(&state, &job_id, "⚠️ Note: Output limited to first 100 rows to prevent memory issues".to_string()).await;
     append_log(&state, &job_id, "".to_string()).await;
 
     match cmd.stdin(std::process::Stdio::piped())
@@ -217,6 +217,12 @@ async fn run_psql_query(
             } else {
                 format!("SET statement_timeout = '30s';\n{}\n", req.query)
             };
+
+            append_log(&state, &job_id, "▶ Executing in psql:".to_string()).await;
+            for line in query_to_execute.lines() {
+                append_log(&state, &job_id, format!("  {}", line)).await;
+            }
+            append_log(&state, &job_id, "".to_string()).await;
 
             if let Err(e) = stdin.write_all(query_to_execute.as_bytes()).await {
                 let error = format!("Failed to write query to psql: {}", e);
