@@ -254,11 +254,14 @@ pub fn apply_connection_params(
         params.push("sslmode=require".to_string());
     }
 
-    // Aplikuj search_path
+    // Aplikuj search_path jako OPTIONS (sqlx/tokio-postgres ignorují přímý search_path)
     if let Some(path) = search_path {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
-            params.push(format!("search_path={}", urlencoding::encode(trimmed)));
+            params.push(format!(
+                "options={}",
+                urlencoding::encode(&format!("-c search_path={}", trimmed))
+            ));
         }
     }
 

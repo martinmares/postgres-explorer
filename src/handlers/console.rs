@@ -586,6 +586,23 @@ async fn run_safe_query(
         }
     };
 
+    // Apply search_path if configured (safe mode)
+    if let Some(path) = endpoint.search_path.as_deref() {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            let quoted = trimmed.replace('\'', "''");
+            if let Err(e) = client
+                .execute(&format!("SET search_path = '{}'", quoted), &[])
+                .await
+            {
+                let error = format!("Failed to set search_path: {}", e);
+                append_log(&state, &job_id, format!("❌ {}", error)).await;
+                complete_job(&state, &job_id, None, Some(error)).await;
+                return;
+            }
+        }
+    }
+
     // Set read-only if requested
     if req.read_only {
         if let Err(e) = client.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY", &[]).await {
